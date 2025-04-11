@@ -28,7 +28,9 @@
 # define NUM_ROWS 4
 # define NUM_COLS 4
 # define ERROR_MESSAGE "Syntax: \n\t\"./fractol mandelbrot\" \
-or \n\t\"./fractol julia <value_1> <value_2>\"\n"
+or \n\t\"./fractol julia <value_1> <value_2>\" \
+or \n\t\"./fractol buddha\"\n"
+
 # define WIDTH   1080
 # define HEIGHT  1080
 # define PLUS 93
