@@ -12,14 +12,56 @@
 
 NAME := fractol
 
-SRCS := main.c events.c render.c utils.c math_utils.c init.c colors.c fractal_threads.c \
-mandelbrot.c julia.c buddhabrot.c utils_3.c density_utils.c
-  
-CFLAGS := -Wall -Wextra -Werror -Ofast -march=native -w
+SRC_DIR = ./src
+OBJ_DIR = ./obj
+INC_DIR = ./inc
 
+#SRCS := \
+$(SRC_DIR)/main.c \
+$(SRC_DIR)/events.c \
+$(SRC_DIR)/render.c \
+$(SRC_DIR)/utils.c \
+$(SRC_DIR)/math_utils.c \
+$(SRC_DIR)/init.c \
+$(SRC_DIR)/colors.c \
+$(SRC_DIR)/fractal_threads.c \
+$(SRC_DIR)/mandelbrot.c \
+$(SRC_DIR)/julia.c \
+$(SRC_DIR)/thread_utils.c \
+$(SRC_DIR)/print_utils.c \
+$(SRC_DIR)/barnsley_fern.c \
+$(SRC_DIR)/fern_utils.c \
+$(SRC_DIR)/set_png_text.c \
+$(SRC_DIR)/clean_up.c \
+$(SRC_DIR)/complex_ops.c \
+$(SRC_DIR)/print_guides.c \
+$(SRC_DIR)/buddha/buddha_events.c \
+$(SRC_DIR)/buddha/buddhabrot.c \
+$(SRC_DIR)/buddha/complex_ops_simd.c \
+$(SRC_DIR)/buddha/density_utils.c \
+$(SRC_DIR)/buddha/fast_buddha.c \
+$(SRC_DIR)/buddha/fullmap_importance.c \
+$(SRC_DIR)/buddha/map_importance.c \
+$(SRC_DIR)/buddha/render_buddha.c \
+$(SRC_DIR)/buddha/set_buddha_colors.c
+
+  
+SRCS = $(wildcard $(SRC_DIR)/*.c) $(wildcard $(SRC_DIR)/*/*.c) 
+#$(wildcard $(SRC_DIR)/*/*/*.c) $(wildcard $(SRC_DIR)/*/*/*/*.c)
+
+#CFLAGS := -Wall -Wextra -Werror -I$(INC_DIR) -Ofast -march=native -w
+CFLAGS := -Wall -Wextra -Werror -I$(INC_DIR) -g -O2 -mavx -mavx2 -march=native -Wno-unused-parameter -Wunused-result 
+CFLAGS += -Wno-unused-result -Wno-unused-variable
 CC := cc
 
-OBS := $(SRCS:.c=.o)
+
+
+#OBS := $(SRCS:.c=.o)
+OBS = $(SRCS:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
+
+
+IMG_PATH = image_processing
+IMG_ARCH = $(IMG_PATH)/libimage_processing.a
 
 COLOR_RESET = \033[0m
 COLOR_GREEN = \033[1;92m
@@ -33,24 +75,27 @@ endef
 
 .SILENT:
 
-all: $(NAME)
+all: $(IMG_ARCH) $(NAME)
 
 $(NAME): $(OBS)
-	$(CC) $(OBS) -lm -Lminilibx-linux -lmlx_Linux -lX11 -lXext -o $@
+	$(CC) $(OBS)  -L$(IMG_PATH) -limage_processing -lm -Lminilibx-linux -lmlx_Linux -lX11 -lXext -o $@ -lpng
 	$(call print_colored, "[SUCCESS]", "./$(NAME)", "Ready")
-#$(CC) $(OBS)  -L$(IMG_PATH) -limage_processing -lm -Lminilibx-linux -lmlx_Linux -lX11 -lXext -o $@ -lpng
-bonus: 
-	cd The_Chaos_Game && make
+
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
+	mkdir -p $(@D)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(IMG_ARCH):
+	$(MAKE) -C $(IMG_PATH)
 
 clean:
 	rm -rf $(OBS)
-	cd The_Chaos_Game  && make clean
+	cd image_processing && make clean
 
 fclean: clean
 	rm -rf $(NAME)
-	rm -rf chaos
-	cd The_Chaos_Game  && make fclean
+	cd image_processing && make fclean
 	
 re: fclean all
 
-.PHONY: all clean fclean re bonus
+.PHONY: all clean fclean re chaos
