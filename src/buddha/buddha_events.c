@@ -1,68 +1,45 @@
 #include "fractol.h"
 
-char	*get_type(t_buddha *b)//totest.. and test enter at main
+void	filter(t_fractal *fractal, t_buddha *b)
 {
-	char	*str;
-
-	if (b->type == BUDDHA1)
-		str = GREEN"------------- STANDARD BUDDHA STATS -------------"RESET;
-	else if (b->type == BUDDHA2)
-		str = MAGENTA"-------------- CUSTOM BUDDHA STATS ------------"RESET;
-	else if (b->type == LOTUS)
-		str = BLUE"----------------- LOTUS STATS -----------------"RESET;
-	else //(b->type == PHEONIX)
-		str = RED"--------------- PHEONIX STATS -----------------"RESET;
-	return (str);
-}
-
-void	print_buddha_vals(t_buddha *buddha, t_fractal *fractal)
-{
-	char *s;
-
-	printf("\n%s\n\n", get_type(buddha));
-	printf(BLUE"Blue power value : %f\n"RESET, buddha->bpow);
-	printf(GREEN"Green power value: %f\n"RESET, buddha->gpow);
-	printf(RED"Red power value  : %f\n\n"RESET, buddha->rpow);
-
-	printf("Complex plane coordinates of center:  x: %f  i: %f\n", fractal->move_x, -fractal->move_y);
-	printf("Zoom factor: %f \n\n", fractal->zoom);
-
-	printf(BLUE"Blue "RESET"channel iterations\n");
-	printf("Min: %d\n", buddha->min1);
-	printf("Max: %d\n\n", buddha->max1);
-
-	printf(GREEN"Green "RESET"channel iterations\n");
-	printf("Min: %d\n", buddha->min2);
-	printf("Max: %d\n\n", buddha->max2);
-
-	printf(RED"Red "RESET"channel iterations\n");
-	printf("Min: %d\n", buddha->min3);
-	printf("Max: %d\n\n", buddha->max3);
-
-	if (buddha->filter)
-		s = GREEN"ON"RESET;
+	if (b->ftype == MEAN)
+	{
+		if (!b->filter)
+			matcpy(fractal->densities[b->fchan], fractal->pdf, fractal->width, fractal->height);
+		else 
+			matcpy(fractal->pdf, fractal->densities[b->fchan], fractal->width, fractal->height);
+	}
 	else
-		s = RED"OFF"RESET;
-
-	printf("Averaging filter: %s  channel: %d  level: %d\n", s, buddha->fchan, buddha->flevel);
+	{	
+		if (b->filter)
+		{
+			img_cpy(&fractal->img_2, &fractal->img, fractal->width, fractal->height);
+			if (b->ftype == ADJUST)
+				adjust_pixels_rgb(&fractal->img, fractal->width, fractal->height, (double)((b->flevel - 1) >> 1) * .5 + 1, 0, RGB);
+			else if (b->ftype == GAUSS)
+				gaussian_convo_filter(fractal->mlx_connect, &fractal->img, fractal->width, fractal->height, 5, ((b->flevel - 1) >> 1) * .5);//lev cannot exceed 7....
+		}
+		else
+			img_cpy(&fractal->img, &fractal->img_2, fractal->width, fractal->height);
+	}
 }
 
-void	toggle_filter(t_fractal *fractal, t_buddha *b)
-{
-	b->filter = !b->filter;
-	if (!b->filter)
-		matcpy(fractal->densities[b->fchan], fractal->pdf, fractal->width, fractal->height);
-	else 
-		matcpy(fractal->pdf, fractal->densities[b->fchan], fractal->width, fractal->height);
-}
+	//some other filters for playing with
+	//adjust_pixels_rgb(&fractal->img, fractal->width, fractal->height, 1, -30, B);
+	//mean_convo_filter(fractal->mlx_connect, &fractal->img, fractal->width, fractal->height, 3);
+	//gaussian_convo_filter(fractal->mlx_connect, &fractal->img, fractal->width, fractal->height, 5, 1);
+	//gamma_correct_rgb(&fractal->img, fractal->width, fractal->height, 1.4, RGB);
+	//adjust_pixels_rgb(&fractal->img, fractal->width, fractal->height, 2, 10, B);
+	//nlm_denoise(&fractal->img, fractal->width, fractal->height, 3, 5, 35);//p_size, win_size, h //needs rework + variance
+
 
 void	change_flevel(int keysym, t_buddha *b, t_fractal *fractal)
 {
-	if (keysym == U)
+	if (keysym == Z)
 	{
 		b->flevel += 2;
-		if (b->flevel > 21)
-			b->flevel = 21;
+		if (b->flevel > 33)
+			b->flevel = 33;
 	}
 	else
 	{
@@ -70,7 +47,7 @@ void	change_flevel(int keysym, t_buddha *b, t_fractal *fractal)
 		if (b->flevel < 3)
 			b->flevel = 3;
 	}
-	if (b->filter)
+	if (b->filter && b->ftype == MEAN)
 		matcpy(fractal->densities[b->fchan], fractal->pdf, fractal->width, fractal->height);
 }
 
@@ -104,6 +81,51 @@ void	change_powers(int keysym, t_buddha *b)
 		b->rpow += .05;	
 	else if (keysym == D)
 		b->rpow -= .05;
+	else
+		return ;
+}
+
+void	change_edges(int keysym, t_buddha *b)
+{
+	if (keysym == U)
+		b->edge0_b += .05;
+	else if (keysym == J)
+		b->edge0_b -= .05;
+	else if (keysym == I)
+		b->edge0_g += .05;
+	else if (keysym == K)
+		b->edge0_g -= .05;
+	else if (keysym == O)
+		b->edge0_r += .05;	
+	else if (keysym == L)
+		b->edge0_r -= .05;
+	else
+		return ;
+}
+
+void	change_edges2(int keysym, t_buddha *b)
+{
+	if (keysym == U)
+		b->edge1_b += .05;
+	else if (keysym == J)
+		b->edge1_b -= .05;
+	else if (keysym == I)
+		b->edge1_g += .05;
+	else if (keysym == K)
+		b->edge1_g -= .05;
+	else if (keysym == O)
+		b->edge1_r += .05;	
+	else if (keysym == L)
+		b->edge1_r -= .05;
+	else
+		return ;
+}
+
+void	change_filter(t_buddha *b)
+{
+	b->ftype++;
+	if (b->ftype == 3)
+		b->ftype = 0;
 }
 
 void buddha_handler(int keysym, t_fractal *fractal)//todo fchan change
@@ -115,12 +137,19 @@ void buddha_handler(int keysym, t_fractal *fractal)//todo fchan change
 		change_powers(keysym, b);
 	else
 		change_powers_layer2(keysym, b);
-	if (keysym == U)
-		change_flevel(keysym, b, fractal);	
-	else if (keysym == J)
+	if (!fractal->layer)
+		change_edges(keysym, b);
+	else
+		change_edges2(keysym, b);
+	if (keysym == Z || keysym == H)
 		change_flevel(keysym, b, fractal);
+	if (keysym == F)
+		change_filter(b);
 	else if (keysym == RGHT_STRG)
-		toggle_filter(fractal, b);
+	{
+		b->filter = !b->filter;
+		filter(fractal, b);
+	}
 	else if (keysym == SPACE)
 	{
 		supersample_handle(keysym, fractal);
@@ -132,15 +161,19 @@ void buddha_handler(int keysym, t_fractal *fractal)//todo fchan change
 		print_buddha_vals(b, fractal);
 		return ;
 	}
-	else if (keysym == F2)
-		print_buddha_guide();
-	else if (keysym == F3)
-		export(keysym, fractal);
 	if (!fractal->supersample)
 	{
 		ft_memset(fractal->img.pixels_ptr, 0, fractal->width_orig * fractal->height_orig * (fractal->img.bpp / 8));	
 		color_buddha(fractal);
+		if (b->filter && b->ftype != MEAN)
+			filter(fractal, b);
 		mlx_put_image_to_window(fractal->mlx_connect,
-		fractal->mlx_win, fractal->img.img_ptr, 0, 0);
+			fractal->mlx_win, fractal->img.img_ptr, 0, 0);
 	}
+	if (keysym == F2)
+			print_buddha_guide();
+	else if (keysym == F3)
+			export(keysym, fractal);
+	else
+		return ;	
 }

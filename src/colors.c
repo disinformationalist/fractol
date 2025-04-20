@@ -47,12 +47,21 @@ int	calc_color_4(double distance, double max_distance, t_4colors *colors)
 	double			t;
 	int				colors_arr[4];
 
+	if (max_distance <= 0)
+		return (0);
+
 	vars.num_colors = 4;
+	assign_colors(colors_arr, colors);
 	norm_distance = distance / max_distance;
+	
+	if (norm_distance >= 1.0)
+		return (colors_arr[vars.num_colors - 1]);
+	if (norm_distance < 0.0)
+		norm_distance = 0.0;
 	color_index_d = norm_distance * (vars.num_colors - 1);
 	vars.color_index_low = (int)color_index_d;
 	vars.color_index_high = vars.color_index_low + 1;
-	assign_colors(colors_arr, colors);
+	
 	t = color_index_d - vars.color_index_low;
 	vars.color_low = colors_arr[vars.color_index_low];
 	vars.color_high = colors_arr[vars.color_index_high];

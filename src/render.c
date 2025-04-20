@@ -26,7 +26,12 @@ void	render_id(t_fractal *fractal)
 		render_buddha(fractal);
 	}
 	else if (fractal->id == 4)
+	{
+		if (fractal->fdensity)
+			free_fdensity(fractal, fractal->height);
+		init_fdensity(fractal);
 		render_barnsleyfern(fractal);
+	}
 }
 
 void	setup_vals(t_fractal *fractal)

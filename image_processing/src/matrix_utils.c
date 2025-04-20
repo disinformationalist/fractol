@@ -68,7 +68,6 @@ void	free_ui_matrix(unsigned int **matrix, int j)
 		matrix[j] = NULL;
 	}
 	free(matrix);
-	matrix = NULL;
 }
 
 void	zero_ui_matrix(unsigned int **pixels_xl, int width, int height)
@@ -88,7 +87,7 @@ void	zero_ui_matrix(unsigned int **pixels_xl, int width, int height)
 unsigned int	**malloc_ui_matrix(int width, int height)
 {
 	unsigned int	**matrix;
-	int i;
+	int 			i;
 
 	i = -1;
 	matrix = (unsigned int **)malloc(height * sizeof(unsigned int *));
@@ -114,7 +113,6 @@ void	free_int_matrix(int **matrix, int j)
 		matrix[j] = NULL;
 	}
 	free(matrix);
-	matrix = NULL;
 }
 
 int	**malloc_int_matrix(int width, int height)

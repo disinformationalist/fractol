@@ -12,22 +12,26 @@
 
 #include "fractol.h"
 
-static inline void set_width_height(t_fractal *fractal, int clamp, bool dir)
+static inline void set_width_height(t_fractal *fractal, int clamp, bool up)
 {
-	if (dir)
+	if (up)
 	{
 		if (fractal->s_kernel > clamp)
-			fractal->s_kernel = clamp;
+		fractal->s_kernel = clamp;
 	}
 	else
 	{
 		if (fractal->s_kernel < clamp)
-			fractal->s_kernel = clamp;
+		fractal->s_kernel = clamp;
 	}
 	if (fractal->supersample)
 	{
+		if (fractal->id == 4)
+				free_fdensity(fractal, fractal->height);
 		fractal->width = fractal->width_orig * fractal->s_kernel;
 		fractal->height = fractal->height_orig * fractal->s_kernel;
+		if (fractal->id == 4)
+				init_fdensity(fractal);
 	}
 	printf("Supersample level: %d\n ", fractal->s_kernel);
 }
@@ -79,6 +83,8 @@ int	supersample_handle(int keysym, t_fractal *fractal)
 	{
 		if (fractal->id == 3)
 			free_matrices(fractal);
+		if (fractal->id == 4)
+			free_fdensity(fractal, fractal->height);
 		if (fractal->supersample)
 		{
 			fractal->width = fractal->width_orig;
@@ -92,6 +98,8 @@ int	supersample_handle(int keysym, t_fractal *fractal)
 		fractal->supersample = !fractal->supersample;
 		if (fractal->id == 3)
 			init_matricies(fractal);
+		if (fractal->id == 4)
+			init_fdensity(fractal);
 	}
 	return (0);
 }
@@ -292,7 +300,7 @@ void	mouse_handler_2(int button, int x, int y, t_fractal *fractal)
 }
 
 int	mouse_handler(int button, int x, int y, t_fractal *fractal)
-{
+{	
 	if (fractal->supersample)
 	{
 		x *= fractal->s_kernel;

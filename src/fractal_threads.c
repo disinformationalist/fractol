@@ -45,8 +45,6 @@ void	mandelbrot(t_fractal *fractal)
 		while (++i < fractal->num_cols)
 		{
 			set_pieces(fractal, piece, i, j);
-			//set_pieces_half(fractal, piece, i, j);
-
 			if (pthread_create(&fractal->threads[j * fractal->num_cols + i], NULL, \
 				mandel_set, (void *)&piece[j][i]) != 0)
 				thread_error(fractal, j * fractal->num_cols + i);
@@ -74,31 +72,26 @@ void	julia(t_fractal *fractal)
 		}
 	}
 	join_threads(fractal->threads, fractal->num_rows, fractal->num_cols);
-
 }
 
-/* void	fern(t_fractal *fractal)//to multithread fern one day
+void	fern(t_fractal *fractal)
 {
-	t_piece	piece[fractal->num_rows][fractal->num_cols];
-	int		i;
-	int		j;
-
-	i = -1;
-	while (++i < fractal->num_rows)
+	int			j;
+	t_piece		piece[fractal->num_rows * fractal->num_cols];
+	uint64_t	glob_seed;
+	
+	glob_seed = 0xFABDECAF;
+	j = -1;
+	while (++j < fractal->num_rows * fractal->num_cols)
 	{
-		j = -1;
-		while (++j < fractal->num_cols)
-		{
-			set_pieces(fractal, piece, i, j);
-			if (pthread_create(&fractal->threads[i * fractal->num_cols + j], NULL, \
-				fern_set, (void *)&piece[i][j]) != 0)
-				thread_error(fractal, fractal->num_rows * fractal->num_cols);
-		}
+		sxoro128(&piece[j].rng, glob_seed + j * 142857);
+		piece[j].fractal = fractal;
+		if (pthread_create(&fractal->threads[j], NULL, \
+				fern_set, (void *)&piece[j]) != 0)
+			thread_error(fractal, j);
 	}
-	join_threads(fractal);
-//render_barnsleyfern(fractal);
-} */
-
+	join_threads(fractal->threads, fractal->num_rows, fractal->num_cols);
+}
 
 void	copy_buddha_half(double **density, int height, int width)
 {
@@ -136,17 +129,19 @@ void	copy_buddha_half_map(double **density, int height, int width)
 
 void	buddha(t_fractal *fractal)
 {
-	//t_piece	piece[fractal->num_rows][fractal->num_cols];
-	//t_data	data[r->num_rows * r->num_cols];
-	int		j;
-
+	int			j;
+	t_piece		piece[fractal->num_rows * fractal->num_cols];
+	uint64_t	glob_seed;
+	
+	glob_seed = 0xFABDECAF;
 	j = -1;
 	while (++j < fractal->num_rows * fractal->num_cols)
 	{
-			//set_pieces(fractal, piece, i, j);
-			//set_pieces_half(fractal, piece, i, j);
+		
+		sxoro128(&piece[j].rng, glob_seed + j * 142857);
+		piece[j].fractal = fractal;
 		if (pthread_create(&fractal->threads[j], NULL, \
-				buddha_set, (void *)fractal) != 0)
+				buddha_set, (void *)&piece[j]) != 0)
 				thread_error(fractal, j);
 	}
 	join_threads(fractal->threads, fractal->num_rows, fractal->num_cols);
@@ -199,7 +194,7 @@ void	set_pieces_map(t_fractal *fractal, t_piece piece[][fractal->num_cols], int 
  */
 }
 
-//build importance map on a channel using grid for best results
+//build importance map on a channel using grid sampling for best representation of avg importance
 
 void	buddha_map(t_fractal *fractal)
 {

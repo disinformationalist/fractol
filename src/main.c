@@ -11,6 +11,7 @@
 /* ************************************************************************** */
 
 #include "fractol.h"
+#include "xoro128.h"
 
 void	set_type(t_fractal *f, int n)
 {
@@ -40,11 +41,11 @@ void	check_width_height(t_fractal *frac)
 		putstr_fd("Width must be greater than 10 and less than 10000\n", STDERR_FILENO);
 		exit(EXIT_FAILURE);
 	}
-	/* if (frac->id == 3 && frac->width != frac->height)
+	if (frac->id == 3 && frac->width != frac->height)
 	{
 		putstr_fd("Width and height must be equal for buddhabrot\n", STDERR_FILENO);
 		exit(EXIT_FAILURE);
-	} */
+	}
 }
 
 void	check_and_set_id(t_fractal *fractal, int ac, char **av)
@@ -95,17 +96,18 @@ void	check_and_set_id(t_fractal *fractal, int ac, char **av)
 int	main(int ac, char **av)
 {
 	t_fractal	fractal;
-
+	
 	fractal.buddha = NULL;
+	
 	check_and_set_id(&fractal, ac, av);
 	//set_least_diff_pair(get_num_cores(), &fractal.num_rows, &fractal.num_cols);
 	fractal.num_cols = 1;
 	fractal.num_rows = get_num_cores();
-
 	fractal.threads = (pthread_t *)malloc(fractal.num_rows * fractal.num_cols * sizeof(pthread_t));
 	if (!fractal.threads)
 	{
-		free(fractal.buddha);
+		if (fractal.buddha)
+			free(fractal.buddha);
 		printf("Error: Thread Malloc failed\n");
 		return (EXIT_FAILURE);
 	}
@@ -113,3 +115,16 @@ int	main(int ac, char **av)
 	render(&fractal);
 	mlx_loop(fractal.mlx_connect);
 }
+
+/*// working. use include where needed and separate seed states fror each thread.
+
+int main() {
+    sxoro128(123456789); // Choose any seed
+
+    for (int i = 0; i < 10; i++) {
+        printf("Random %d: %f\n", i, xoro128d());
+    }
+
+    return 0;
+}
+ */

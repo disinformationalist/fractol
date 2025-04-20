@@ -43,13 +43,15 @@ $(SRC_DIR)/buddha/fast_buddha.c \
 $(SRC_DIR)/buddha/fullmap_importance.c \
 $(SRC_DIR)/buddha/map_importance.c \
 $(SRC_DIR)/buddha/render_buddha.c \
-$(SRC_DIR)/buddha/set_buddha_colors.c
+$(SRC_DIR)/buddha/set_buddha_colors.c \
+$(SRC_DIR)/buddha/print_buddha_vals.c
+
 
   
 SRCS = $(wildcard $(SRC_DIR)/*.c) $(wildcard $(SRC_DIR)/*/*.c) 
 #$(wildcard $(SRC_DIR)/*/*/*.c) $(wildcard $(SRC_DIR)/*/*/*/*.c)
 
-#CFLAGS := -Wall -Wextra -Werror -I$(INC_DIR) -Ofast -march=native -w
+#CFLAGS := -Wall -Wextra -Werror -I$(INC_DIR) -O2 -march=native -w
 CFLAGS := -Wall -Wextra -Werror -I$(INC_DIR) -g -O2 -mavx -mavx2 -march=native -Wno-unused-parameter -Wunused-result 
 CFLAGS += -Wno-unused-result -Wno-unused-variable
 CC := cc

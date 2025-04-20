@@ -18,7 +18,9 @@ void	copy_buddha_half_fast(double  **density, int height, int width)
 	}
 }
 
-void	sample_pixel_rand(t_fractal *fractal, int x, int y, double total_samples, double slope_x1, double slope_y1, double slope_x, double slope_y, f complex_f, int hist)
+//grid within each pixel
+
+void	sample_pixel_grid(t_fractal *fractal, int x, int y, double total_samples, double slope_x1, double slope_y1, double slope_x, double slope_y, f complex_f, int hist)
 {
 	int 		i, j;
 	t_complex	c;
@@ -27,7 +29,7 @@ void	sample_pixel_rand(t_fractal *fractal, int x, int y, double total_samples, d
 	double 		sample_prob = fractal->pdf[y][x];
 	int 		pix_samples = ft_round(total_samples * sample_prob);
 	int 		limit = ft_round(sqrt(pix_samples));
-
+	double		weight = 1.0 / sample_prob;
 
 	offset = 1.0 / limit;
 	double half_off = offset / 2;
@@ -40,17 +42,19 @@ void	sample_pixel_rand(t_fractal *fractal, int x, int y, double total_samples, d
 		offset_x = half_off;
 		while(++i < limit - 1)
 		{
-			c.x = map_2((double)x + offset_x, -2, slope_x1);
-			c.y = map_2((double)y + offset_y, 2, slope_y1);
+			c.x = map_2((double)x + offset_x, -2, slope_x1);// * zoom + move_x;
+			c.y = map_2((double)y + offset_y, 2, slope_y1);// * zoom - move_y;
 			offset_x += offset;
 
-			buddha_iteration(fractal, c, sample_prob, hist, slope_x, slope_y, complex_f);
+			buddha_iteration(fractal, c, weight, hist, slope_x, slope_y, complex_f);
 		}
 		offset_y += offset;
 	}
 }
 
-void	sample_pixel(t_fractal *fractal, int x, int y, double total_samples, double slope_x1, double slope_y1, double slope_x, double slope_y, f complex_f, int hist)
+//random within each pixel. currently used, and has xoroshiro128 random 0 <= rand <= 1.0
+
+void	sample_pixel(t_fractal *fractal, int x, int y, double total_samples, double slope_x1, double slope_y1, double slope_x, double slope_y, f complex_f, int hist, Xoro128 *rng)
 {
 	int 		i, j;
 	t_complex	c;
@@ -58,48 +62,27 @@ void	sample_pixel(t_fractal *fractal, int x, int y, double total_samples, double
 	double		offset_x, offset_y;
 	double 		sample_prob = fractal->pdf[y][x];
 	int 		pix_samples = ft_round(total_samples * sample_prob);
-	//int 		limit = ft_round(sqrt(pix_samples));
+	double		weight = 1.0 / sample_prob;
+	
+	
+	double		inv_zoom = 1 / fractal->zoom;
+	double		move_x = fractal->move_x;
+	double		move_y = fractal->move_y;
 
-//-------- if limit < threshold use random instead, seems to be working at n + 3 or 4 threshold(some wierd stuff), a little bit slower with it as expected
-	//if (limit < fractal->n + 4)
+
 	{
 		i = -1;
 		while (++i < pix_samples)
 		{
-			pthread_mutex_lock(&fractal->rand_mtx);
-			offset_x = randf();
-			offset_y = randf();
-			pthread_mutex_unlock(&fractal->rand_mtx);
-
-			c.x = map_2((double)x + offset_x, -2, slope_x1);
-			c.y = map_2((double)y + offset_y, 2, slope_y1);
-			buddha_iteration(fractal, c, sample_prob, hist, slope_x, slope_y, complex_f);
+			offset_x = xoro128d(rng);//NEED A COMPS STRUCT
+			offset_y = xoro128d(rng);
+			c.x = map_2((double)x + offset_x, -2, slope_x1) * inv_zoom + move_x;
+			c.y = map_2((double)y + offset_y, 2, slope_y1) * inv_zoom - move_y;
+			
+			buddha_iteration(fractal, c, weight, hist, slope_x, slope_y, complex_f);
 		}
 	}
-	/* else
-	{//this is using grid method
-	offset = 1.0 / limit;
-	double half_off = offset / 2;
-
-	j  = -1;
-	offset_y = half_off;
-	while(++j < limit - 1)
-	{
-		i = -1;
-		offset_x = half_off;
-		while(++i < limit - 1)
-		{
-			c.x = map_2((double)x + offset_x, -2, slope_x1);
-			c.y = map_2((double)y + offset_y, 2, slope_y1);
-			offset_x += offset;
-
-			buddha_iteration(fractal, c, sample_prob, hist, slope_x, slope_y, complex_f);
-		}
-		offset_y += offset;
-	}
-	} */
 }
-
 
 void	*buddha_set_fast(void *arg)
 {
@@ -107,17 +90,15 @@ void	*buddha_set_fast(void *arg)
 	t_fractal	*fractal;
 	int 		i;
 	
-	
-	piece = (t_piece *)arg;
-	fractal = piece->fractal;
-
 	double		offset_x;
 	double		offset_y;
 	double 		sample_prob;
 	double		width;
 	double		height;
 	double		total_samples;
-
+	
+	piece = (t_piece *)arg;
+	fractal = piece->fractal;
 	width = (double)fractal->width;
 	height = (double)fractal->height;
 	f 			complex_f = fractal->complex_f;
@@ -129,39 +110,37 @@ void	*buddha_set_fast(void *arg)
 	int 		x, y;
 
 	total_samples = (double)fractal->size * SQ(fractal->buddha->n);
-	
 	y = piece->y_s;
 	x = piece->x_s - 1;
 	while (++x < width)//first row
-			sample_pixel(fractal, x, y, total_samples, slope_x1, slope_y1, slope_x, slope_y, complex_f, hist);
+			sample_pixel(fractal, x, y, total_samples, slope_x1, slope_y1, slope_x, slope_y, complex_f, hist, &piece->rng);
 	while (++y < piece->y_e)//body
 	{
 		x = -1;
 		while (++x < width)
-		{
-			//work each pixel in two loop grid sampling scheme
-			sample_pixel(fractal, x, y, total_samples, slope_x1, slope_y1, slope_x, slope_y, complex_f, hist);	
-		}
+			sample_pixel(fractal, x, y, total_samples, slope_x1, slope_y1, slope_x, slope_y, complex_f, hist, &piece->rng);
 	}
 	x = -1;
 	while (++x < piece->x_e)//last row
-		sample_pixel(fractal, x, y, total_samples, slope_x1, slope_y1, slope_x, slope_y, complex_f, hist);	
+		sample_pixel(fractal, x, y, total_samples, slope_x1, slope_y1, slope_x, slope_y, complex_f, hist, &piece->rng);	
 
 	pthread_exit(NULL);
 }
 
 void	fast_buddha(t_fractal *fractal)//sampling points all at once in accordance with importance. setting thread data here for balanced work
 {
-	int num_threads = fractal->num_rows * fractal->num_cols;
-	t_piece	piece[num_threads];
-	int		i;
-	double	limit;
-	int		index;
-	int		x;
-	int		y;
-	int		x_prev;
-	int		y_prev;
-
+	int 		num_threads = fractal->num_rows * fractal->num_cols;
+	t_piece		piece[num_threads];
+	int			i;
+	double		limit;
+	int			index;
+	int			x;
+	int			y;
+	int			x_prev;
+	int			y_prev;
+	uint64_t	glob_seed;
+	
+	glob_seed = 0xFABDECAF;//secret number fAb DeCaF
 	if (!fractal->move_y && fractal->buddha->copy_half)//half_copy
 		limit = 1.0 / (2.0 * (double)num_threads);
 	else
@@ -180,39 +159,28 @@ void	fast_buddha(t_fractal *fractal)//sampling points all at once in accordance 
 		piece[i].y_s = y_prev;
 		piece[i].y_e = y;
 		piece[i].fractal = fractal;
-			
+		sxoro128(&piece[i].rng, glob_seed + i * 142857);
 		x_prev = x;
 		y_prev = y;
 		//printf("thread: %d, x_s: %d, y_s: %d, x_e: %d, y_e: %d\n", i, piece[i].x_s, piece[i].y_s, piece[i].x_e, piece[i].y_e);// for troubshoot
-		
-
 		if (pthread_create(&fractal->threads[i], NULL, \
 			buddha_set_fast, (void *)&piece[i]) != 0)
 			thread_error(fractal, i);
-		/* if (pthread_create(&fractal->threads[i], NULL, \
-			buddha_set_fast_simd, (void *)&piece[i]) != 0)
-			thread_error(fractal, i); */
 	}
-		piece[i].x_s = x_prev;
-		piece[i].x_e = fractal->width;
-		piece[i].y_s = y_prev;
-		
-		if (!fractal->move_y && fractal->buddha->copy_half)//half_copy
-			piece[i].y_e = (fractal->height >> 1) - 1;
-		else
-			piece[i].y_e = fractal->height - 1;
-		piece[i].fractal = fractal;
+	piece[i].x_s = x_prev;
+	piece[i].x_e = fractal->width;
+	piece[i].y_s = y_prev;	
+	if (!fractal->move_y && fractal->buddha->copy_half)//half_copy
+		piece[i].y_e = (fractal->height >> 1) - 1;
+	else
+		piece[i].y_e = fractal->height - 1;
+	piece[i].fractal = fractal;
+	sxoro128(&piece[i].rng, glob_seed + i * 17);
 		//printf("thread: %d, x_s: %d, y_s: %d, x_e: %d, y_e: %d\n", i, piece[i].x_s, piece[i].y_s, piece[i].x_e, piece[i].y_e);//for troubshoot
 		
-		if (pthread_create(&fractal->threads[i], NULL, \
-			buddha_set_fast, (void *)&piece[i]) != 0)
-			thread_error(fractal, i);
-			
-		/* if (pthread_create(&fractal->threads[i], NULL, \
-			buddha_set_fast_simd, (void *)&piece[i]) != 0)
-			thread_error(fractal, i); */
-	
-			
+	if (pthread_create(&fractal->threads[i], NULL, \
+		buddha_set_fast, (void *)&piece[i]) != 0)
+		thread_error(fractal, i);	
 	//long start = get_time(); //for thread tes
 	i = -1;
 	while (++i < num_threads)

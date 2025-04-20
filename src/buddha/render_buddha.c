@@ -1,6 +1,6 @@
 #include "fractol.h"
 
-void	put_pixel_map(int x, int y, t_fractal *fractal, unsigned int color)
+void	put_pixel2(int x, int y, t_fractal *fractal, unsigned int color)
 {
 	if (!fractal->supersample)
 		my_pixel_put(x, y, &fractal->img_2, color);
@@ -111,10 +111,10 @@ void	run_and_reset(t_fractal *fractal, int buddha_min, int buddha_iters, char ch
 		print_times(map_start, get_time(), "\0", "Map channel time  : %f seconds\n", MAGENTA);
 	}
 	run_start = get_time();
-	//zero_matrix(fractal->densities[hist], fractal->width, fractal->height);
+	zero_matrix(fractal->densities[hist], fractal->width, fractal->height);
 	printf(MAGENTA"Running channel: "BLUE"%d ...\n"RESET, fractal->hist_num);
 	if (b->fast)
-		fast_buddha(fractal);
+		fast_buddha(fractal);//using monte carlo importance
 	else
 		buddha(fractal);//for using normal random sampling method
 	num = high_hit_count(fractal->width, fractal->height, fractal->densities[hist]);
@@ -126,10 +126,10 @@ void	run_and_reset(t_fractal *fractal, int buddha_min, int buddha_iters, char ch
 		b->high_r = num;
 	print_times(run_start, get_time(), "\0", "Run channel time  : %f seconds\n", MAGENTA);
 	printf(MAGENTA"Channel: "BLUE"%d Complete\n"RESET, fractal->hist_num);
-	print_times(start, get_time(), "\0", "Total channel time: %f seconds\n", MAGENTA);
+	print_times(start, get_time(), "\0", "Total channel time: %f seconds\n\n", MAGENTA);
 }
 
-void	render_buddha(t_fractal *fractal)//consider remove half copy. compare without
+void	render_buddha(t_fractal *fractal)
 {	
 	long start = get_time();
 	
@@ -138,13 +138,7 @@ void	render_buddha(t_fractal *fractal)//consider remove half copy. compare witho
 	run_and_reset(fractal, fractal->buddha->min2, fractal->buddha->max2, 'g');
 	run_and_reset(fractal, fractal->buddha->min3, fractal->buddha->max3, 'r');
 	color_buddha(fractal);
-/* 	set_vals(fractal, 50, 50, 50, 90, 90, 90, &square_complex);
-	fractal->buddha->bpow = .5;
-	fractal->buddha->gpow = .5;
-	fractal->buddha->rpow = .5;
-	run_and_reset(fractal, fractal->buddha->min1, fractal->buddha->max1, 'b');//letter swaps work
-	run_and_reset(fractal, fractal->buddha->min2, fractal->buddha->max2, 'g');
-	run_and_reset(fractal, fractal->buddha->min3, fractal->buddha->max3, 'r');
-	color_buddha(fractal); */
 	print_times(start, get_time(), "RENDER COMPLETE\n", "Total render time : "GREEN"%f"RESET" seconds\n", BOLD_BLUE);
 }
+
+	

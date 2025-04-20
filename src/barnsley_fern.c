@@ -26,11 +26,11 @@ void	map_barnsley(t_fractal *fractal, t_position *pos, double xn, double yn, dou
 	double y_max = 9.9983;
 	double oldmax_minus_oldmin_x = 4.8378; 
 	
-	pos->x = (int)(((((xn * zoom + fractal->move_x) + x_max) / oldmax_minus_oldmin_x * fractal->width)));
-	pos->y = (int)((((y_max - yn * zoom + fractal->move_y) / y_max * fractal->height)));
+	pos->x = (int)(((((xn * zoom - fractal->move_x) + x_max) / oldmax_minus_oldmin_x * fractal->width)));
+	pos->y = (int)((((y_max - yn * zoom - fractal->move_y) / y_max * fractal->height)));
 }
 
-void	choose_random_point(double r, double *xn, double *yn, double **vals, t_fractal *fractal)
+void	get_rand_point(double r, double *xn, double *yn, double **vals, t_fractal *fractal)
 {
 	double	x_old;
 	double	y_old;
@@ -65,14 +65,13 @@ void	choose_random_point(double r, double *xn, double *yn, double **vals, t_frac
 	}
 }
 
-void	calc_barnsleyfern(t_fractal *fractal, double zoom)
+void	calc_barnsleyfern(t_fractal *fractal, double zoom, int samples, Xoro128 *rng)
 {
 	t_position	*pos;
 	double		**vals;
 	int			n;
 	double		xn;
 	double		yn;
-	int			max_iter;
 
 	pos = (t_position *)malloc(sizeof(t_position));
 	pos->x = 0;
@@ -81,41 +80,55 @@ void	calc_barnsleyfern(t_fractal *fractal, double zoom)
 	yn = 0.0;
 	vals = NULL;
 	vals = alloc_fern(fractal, vals);
-	if (fractal->supersample)
-		max_iter = (fractal->max_i * 7) * fractal->height * fractal->s_kernel * fractal->s_kernel * fractal->zoom;
-	else
-		max_iter = (fractal->max_i * 7) * fractal->height * fractal->zoom;
 	n = -1;
-	while (++n < max_iter)
+	while (++n < samples)
 	{
-		choose_random_point(randf(), &xn, &yn, vals, fractal);
+		get_rand_point(xoro128d(rng), &xn, &yn, vals, fractal);
 		map_barnsley(fractal, pos, xn, yn, zoom);
 		if ((pos->x >= 0 && pos->x < fractal->width) && (pos->y >= 0 && pos->y < fractal->height))
 		{
 			//color_op_barn(n, fractal, pos);
-			fractal->fdensity[pos->x][pos->y] += 1;
+			fractal->fdensity[pos->y][pos->x] += 1;
 		}
 	}
-
-	density_color(fractal);
-	zero_fdensity(fractal);
 	free_fern(vals, 4);
 	free(pos);
 }
 
 int	render_barnsleyfern(t_fractal *fractal)
 {
-	double zoom;
-	
-	init_fdensity(fractal);
-	zoom = 1.0 / fractal->zoom;
-	fractal->colors.color_1 = fractal->w_colors[fractal->col_i + 252];
-	fractal->colors.color_2 = fractal->w_colors[(fractal->col_i + 480 + 252) % 360];
-	fractal->colors.color_3 = fractal->w_colors[(fractal->col_i + 600 + 252) % 360];
-	fractal->colors.color_4 = fractal->w_colors[(fractal->col_i + 710 + 252) % 360];	
+	int shift;
+
+	shift = 63;
+	fractal->colors.color_1 = fractal->w_colors[fractal->col_i + shift];
+	fractal->colors.color_2 = fractal->w_colors[(fractal->col_i + 120 + shift) % 360];
+	fractal->colors.color_3 = fractal->w_colors[(fractal->col_i + 240 + shift) % 360];
+	fractal->colors.color_4 = fractal->w_colors[(fractal->col_i + shift) % 360];	
 	if (!fractal->supersample)
 		ft_memset(fractal->img.pixels_ptr, 0, fractal->width * fractal->height * (fractal->img.bpp / 8));
-	calc_barnsleyfern(fractal, zoom);
-	free_fdensity(fractal, fractal->height);
+	fern(fractal);
+	density_color(fractal);
 	return (0);
+}
+
+void	*fern_set(void *arg)
+{
+	t_fractal	*fractal;
+	t_piece		*piece;
+	Xoro128		*rng;
+	int			i;
+	double		zoom;
+	double 		samples;
+
+	piece = (t_piece *)arg;
+	fractal = piece->fractal;
+	zoom = 1.0 / fractal->zoom;
+	if (fractal->supersample)
+		samples = (fractal->max_i * 7) * fractal->height * fractal->s_kernel * fractal->s_kernel * fractal->zoom;
+	else
+		samples = (fractal->max_i * 7) * fractal->height * fractal->zoom;
+	samples /= (double)fractal->num_rows * (double)fractal->num_cols;
+	rng = &piece->rng;
+	calc_barnsleyfern(fractal, zoom, samples, rng);
+	pthread_exit(NULL);
 }

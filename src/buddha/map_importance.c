@@ -13,7 +13,7 @@ void	track_importance(t_fractal *fractal, t_complex c, double slope_x, double sl
 	double		move_x = fractal->move_x;
 	double		move_y = fractal->move_y;
 	double		zoom = fractal->zoom;
-	double		*density_row;
+	//double		*density_row;
 
 	iterations = 0;
 	count_hits = 0;
@@ -23,16 +23,17 @@ void	track_importance(t_fractal *fractal, t_complex c, double slope_x, double sl
 	{
 		z = sum_complex(complex_f(z), c);
 		iterations++;
-		x = ft_round(map_back_2((z.x + move_x) * zoom, -2, slope_x));
+		x = ft_round(map_back_2((z.x - move_x) * zoom, -2, slope_x));
 		y = ft_round(map_back_2((z.y + move_y) * zoom, 2, slope_y));
 		if (x >= 0 && x < fractal->width && y >= 0 && y < fractal->height)
 			count_hits++;
 	}
-	i = ft_round(map_back_2(c.x, -2, slope_x));
-	j = ft_round(map_back_2(c.y, 2, slope_y));
+	i = ft_round(map_back_2((c.x - move_x) * zoom, -2, slope_x));
+	j = ft_round(map_back_2((c.y + move_y) * zoom, 2, slope_y));
 	pthread_mutex_lock(&fractal->mutex);
-		density_row = fractal->densities[k][j];
-        density_row[i] += count_hits;
+	fractal->densities[k][j][i] += count_hits;
+		//density_row = fractal->densities[k][j];
+        //density_row[i] += count_hits;
 	pthread_mutex_unlock(&fractal->mutex);
 }
 
@@ -76,17 +77,32 @@ void	*buddha_set_map(void *arg)
 	double 		slope_x1 = 4.0 / width;//for the map to
 	double 		slope_y1 = -4.0 / height;
 
+	double		inv_zoom = 1.0 / fractal->zoom;
+	double		move_x = fractal->move_x;
+	double		move_y = fractal->move_y;
+
+
 	y = (double)piece->y_s - 1;
 	while (++y < piece->y_e)
 	{
 		x = (double)piece->x_s - 1;
 		while (++x < piece->x_e)
 		{
-			c.x = map_2(x, -2, slope_x1);
-			c.y = map_2(y, 2, slope_y1);
+			c.x = map_2(x, -2, slope_x1)  * inv_zoom + move_x;
+			c.y = map_2(y, 2, slope_y1) * inv_zoom - move_y;
 			buddha_iteration_map(fractal, c, slope_x, slope_y, complex_f);
 		}
 	}
 	pthread_exit(NULL);
 }
+/* double	map_2(double unscaled_num, double new_min, double slope)
+{
+	return (new_min + slope * unscaled_num);
+}
 
+double	map(double unscaled_num, double new_min, double new_max, double old_max)
+{
+	return ((new_max - new_min) * unscaled_num / old_max + new_min);
+} */
+//c.x = (map(p.x, -2, +2, width) * zoom + move_x);
+//c.y = (map(p.y, +2, -2, height) * zoom_orig - move_y);

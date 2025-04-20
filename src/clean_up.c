@@ -58,6 +58,8 @@ int	close_handler(t_fractal *fractal)
 		free_matrices(fractal);
 		free(fractal->buddha);
 	}
+	if (fractal->fdensity)
+			free_fdensity(fractal, fractal->height);
 	exit(EXIT_SUCCESS);
 	return (0);
 }

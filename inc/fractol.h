@@ -31,7 +31,7 @@
 #include <immintrin.h> // For AVX SIMD intrinsics
 #include <float.h>
 #include <time.h>
-#include <stdint.h>
+#include <xoro128.h>//better rand()
 
 # define ERROR_MESSAGE "Syntax: \n\t\"./fractol mandelbrot <width> <height>\" \
 \n or \t\"./fractol julia <value_1> <value_2> <width> <height>\" \
@@ -84,11 +84,18 @@ typedef enum e_btype
 	PHEONIX,
 } t_btype;
 
+typedef enum e_ftype
+{
+	MEAN,
+	ADJUST,
+	GAUSS,
+} t_ftype;
 
 typedef struct s_buddha
 {
 	t_btype	type;
-	
+	t_ftype ftype;
+
 	double	n;
 	double	map_n;
 	
@@ -107,7 +114,15 @@ typedef struct s_buddha
 	int		max2;
 	int		max3;
 
+	double	edge0_r;
+	double	edge0_g;
+	double	edge0_b;
+	double	edge1_r;
+	double	edge1_g;
+	double	edge1_b;
+
 	bool	filter;
+	bool	smootherstep;
 	int		fchan;
 	int		flevel;
 
@@ -179,6 +194,8 @@ typedef struct s_fractal
 	int 			id;
 }	t_fractal;
 
+//thread data for each thread
+
 typedef struct s_piece
 {
 	int			x_s;
@@ -186,6 +203,8 @@ typedef struct s_piece
 	int			y_s;
 	int			y_e;
 	t_fractal	*fractal;
+	Xoro128		rng;
+
 
 	//for testing
 	unsigned int	thread_color;
@@ -204,6 +223,8 @@ void		buddha(t_fractal *fractal);
 void		*buddha_set(void *arg);
 void		buddha_map(t_fractal *fractal);
 void		*buddha_set_map(void *arg);
+void		*fern_set(void *arg);
+void		fern(t_fractal *fractal);
 
 //some buddha utils
 void		render_buddha(t_fractal *fractal);
@@ -218,7 +239,7 @@ void		color_buddha(t_fractal *fractal);
 int			binary_search(double *cdf, int size, double value);
 void		set_vals(t_fractal *fractal, int min_1, int min_2, int min_3, int max_1, int max_2, int max_3, f complex_f);
 void		buddha_iter_fullmap(t_fractal *fractal, t_complex c, double slope_x, double slope_y, f complex_f);
-void		buddha_iteration(t_fractal *fractal, t_complex c, double sample_prob, int k, double slope_x, double slope_y, f complex_f);
+void		buddha_iteration(t_fractal *fractal, t_complex c, double weight, int k, double slope_x, double slope_y, f complex_f);
 
 double		pow_ft(double num, double power);
 
@@ -240,6 +261,7 @@ int			ft_putstr_color_fd(int fd, char *s, char *color);
 void		fractal_init(t_fractal *fractal);
 void		*ft_memset(void *s, int c, size_t n);
 double		**matcpy(double **dest, double **src, int width, int height);
+void		put_pixel2(int x, int y, t_fractal *fractal, unsigned int color);
 
 
 double		map(double unscaled_num, double new_min, double new_max, double old_max);
@@ -295,6 +317,8 @@ int			julia_handle(int x, int y, t_fractal *fractal);
 int			supersample_handle(int keysym, t_fractal *fractal);
 void		export(int keysym, t_fractal *fractal);
 void 		buddha_handler(int keysym, t_fractal *fractal);
+void		print_buddha_vals(t_buddha *buddha, t_fractal *fractal);
+
 
 
 /***PRINT_UTILS****/

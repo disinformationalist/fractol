@@ -23,61 +23,77 @@ void	set_vals(t_fractal *fractal, int min_1, int min_2, int min_3, int max_1, in
 	fractal->complex_f = complex_f;
 }
 
+void	set_edge_vals(t_buddha *b, double e0b, double e0g, double e0r, double e1b, double e1g, double e1r)
+{
+	b->edge0_b = e0b;
+	b->edge0_g = e0g;
+	b->edge0_r = e0r;
+	b->edge1_b = e1b;
+	b->edge1_g = e1g;
+	b->edge1_r = e1r;
+}
+
+void	set_powers(t_buddha *bud, double b, double g, double r)
+{
+	bud->bpow = b;
+	bud->gpow = g;
+	bud->rpow = r;
+}
+
 void	init_buddha(t_fractal *fractal)
 {
 	t_buddha	*b;
 	t_btype		type;
 
-	
 	b = fractal->buddha;
 	b->filter = false;
 	b->fchan = 0;
-	b->flevel = 11;
+	b->flevel = 5;
+	b->ftype = MEAN;
 
-	fractal->move_x = .21;//-x coord
-	fractal->move_y = 0;//0;//-y coord
-	fractal->zoom = 1.2;//zoom lvl
-
-	/* fractal->move_x = .34;//.158;
+	fractal->move_x = -.21;//-x coord
+	fractal->move_y = 0;//-y coord
+	fractal->zoom = 1.2;//zoom lvl, //still some zoom issues...
+	/* fractal->move_x = .34;//-.158;
 	fractal->move_y = -.7;//-1.033;
 	fractal->zoom = 5;//200; */
 
 	b->fast = true;
 	b->copy_half = false;
-	//n, map_n
-	b->n = 4;//can use doubles on these as well
+	b->n = 3;//can use doubles on these as well
 	b->map_n = b->n - 1;
-
-	//b->type = 0;
 	type = b->type;
+	b->smootherstep = 1;//false;
 
 	if (type == BUDDHA1)
 	{
-		b->bpow = 1;
-		b->gpow = 1;
-		b->rpow = 1;
-		set_vals(fractal, 0, 0, 0, 50, 300, 2750, &square_complex);
+		if (b->smootherstep)
+			set_powers(b, .43, .38, .35);//b,g,r
+		else
+			set_powers(b, 1, 1, 1);
+
+		set_edge_vals(b, .35, .35, .35, .65, .65, .65);
+		set_vals(fractal, 0, 0, 0, 30, 300, 3000, &square_complex);
+		//set_vals(fractal, 0, 0, 0, 50, 300, 2750, &square_complex);
 	}
 	else if (type == BUDDHA2)//stormcloud buddha
 	{
-		b->bpow = .5;	
-		b->gpow = .65;
-		b->rpow = .6;
+		set_powers(b, .5, .65, .6);
+		set_edge_vals(b, 0, 0, 0, 1, 1, 1);
 		set_vals(fractal, 20, 55, 55, 350, 500, 3500, &square_complex);
 	}
 	else if (type == LOTUS)
 	{
-		b->bpow = .5;
-		b->gpow = .65;
-		b->rpow = .65;
+		set_powers(b, .5, .65, .65);
+		set_edge_vals(b, 0, 0, 0, 1, 1, 1);
 		set_vals(fractal, 20, 55, 100, 150, 200, 3000, &square_complex_conj);
+		//set_vals(fractal, 25, 80, 160, 150, 300, 2500, &square_complex_conj);
 	}
 	else// (type == PHEONIX)
 	{
+		set_powers(b, .45, .6, .5);
+		set_edge_vals(b, 0, 0, 0, 1, 1, 1);
 		set_vals(fractal, 12, 55, 55, 250, 600, 3000, &cube_ship);
-		b->bpow = .45;
-		b->gpow = .6;
-		b->rpow = .5;
 		fractal->move_x = 0;
 	}
 
@@ -113,6 +129,8 @@ void	info_init(t_fractal *fractal)
 	fractal->species = 0;
 	fractal->aspect = (double)fractal->height_orig / (double)fractal->width_orig;
 	fractal->cdf = NULL;
+	fractal->fdensity = NULL;
+	fractal->pixels_xl = NULL;
 }
 
 static void	events_init(t_fractal *fractal)

@@ -12,16 +12,6 @@
 
 #include "fractol.h"
 
-unsigned int rand_r_custom(unsigned int *seed)
-{
-    return rand_r(seed);
-}
-
-double randf_r(unsigned int *seed) //for other methods.
-{
-    return (double)rand_r_custom(seed) / (double)RAND_MAX;
-}
-
 int	ft_round(double d)
 {
 	return (floor(d + 0.5));
@@ -33,13 +23,12 @@ double randf()
 	return ((double)rand() / (double)RAND_MAX);
 }
 
-void	orbit_tracker(t_fractal *fractal, t_complex c, double sample_prob, int k, double slope_x, double slope_y, f complex_f)
+void	orbit_tracker(t_fractal *fractal, t_complex c, double weight, int k, double slope_x, double slope_y, f complex_f)
 {
 	t_complex	z;
 	int			x;
 	int			y;
 	int			iterations;
-	double		weight = 1.0 / sample_prob;
 	double		move_x = fractal->move_x;
 	double		move_y = fractal->move_y;
 	double		zoom = fractal->zoom;
@@ -52,11 +41,13 @@ void	orbit_tracker(t_fractal *fractal, t_complex c, double sample_prob, int k, d
 	{
 		z = sum_complex(complex_f(z), c);
 		iterations++;
-		y = ft_round(map_back_2((z.x + move_x) * zoom, -2, slope_x));
+		y = ft_round(map_back_2((z.x - move_x) * zoom, -2, slope_x));
 		x = ft_round(map_back_2((z.y + move_y) * zoom, 2, slope_y));
+		/* y = ft_round(map_back_2(((z.x + move_x) * fractal->cos_a + (c.y + move_y) * fractal->sin_a) * zoom, -2, slope_x));
+		x = ft_round(map_back_2(((z.y + move_y) * fractal->cos_b - (c.x + move_x) * fractal->sin_b) * zoom, 2, slope_y)); */
 		if (x >= 0 && x < fractal->width && y >= 0 && y < fractal->height)
 		{
-			//THIS MTX EATS TIME, without it mthread 3x+ faster than non, with it mthread is SLOWER, very low prob of data race, insignificant
+			//THIS MTX EATS TIME, without it mthread 3x+ faster than non, with it mthread is  3x+ SLOWER, very low prob of data race, insignificant
 			//other solution is to keep separate arrays for each thread and sum after thread join. Very memory intensive though
 
 			//pthread_mutex_lock(&fractal->mutex); 
@@ -67,7 +58,7 @@ void	orbit_tracker(t_fractal *fractal, t_complex c, double sample_prob, int k, d
 }
 
 
-void	buddha_iteration(t_fractal *fractal, t_complex c, double sample_prob, int k, double slope_x, double slope_y, f complex_f)
+void	buddha_iteration(t_fractal *fractal, t_complex c, double weight, int k, double slope_x, double slope_y, f complex_f)
 {
 	t_complex	z;
 	int			iterations;
@@ -84,7 +75,7 @@ void	buddha_iteration(t_fractal *fractal, t_complex c, double sample_prob, int k
 		iterations++;
 	}
 	if (iterations < max && iterations > fractal->b_min_i)
-		orbit_tracker(fractal, c, sample_prob, k, slope_x, slope_y, complex_f);
+		orbit_tracker(fractal, c, weight, k, slope_x, slope_y, complex_f);
 }
 
 int binary_search(double *cdf, int size, double value)
@@ -114,43 +105,42 @@ void	importance_sample(t_fractal *fractal, int *s_x, int *s_y, int *index)
     *s_y = *index / fractal->width;
 }
 
-void	*buddha_set(void *arg)//old method much slower.
+void	*buddha_set(void *arg)//normal rand method much slower.
 {
 	t_fractal	*fractal;
+	t_piece		*piece;
 	t_complex	c;
 	int 		i;
 	int 		index;
-	double		offset_x;
-	double		offset_y;
-	double 		sample_prob;
-	double		width;
-	double		height;
+	double		move_x;
+	double		move_y;
 	double		samples;
+	double		y_lim;
+	Xoro128		*rng;
+	double		inv_zoom;
 
-	fractal = (t_fractal *)arg;
-	width = (double)fractal->width;
-	height = (double)fractal->height;
+	piece = (t_piece *)arg;
+	fractal = piece->fractal;
 	f 			complex_f = fractal->complex_f;
 	double 		slope_x = ((double)fractal->width - 1.0) / 4.0;//slope = (new_max - new_min) / (old_max - old_min);
 	double 		slope_y = ((double)fractal->height - 1.0) / -4.0;//for the map_back...
-	double 		slope_x1 = 4.0 / width;
-	double 		slope_y1 = -4.0 / height;
 	int 		hist = fractal->hist_num;
-
+	move_x = fractal->move_x;
+	move_y = fractal->move_y;
+	inv_zoom = 1.0f / fractal->zoom;
+	if (!fractal->buddha->copy_half)
+		y_lim = -4.0;
+	else
+		y_lim = -2.0;
 	samples = (double)fractal->size * SQ(fractal->buddha->n);
 	samples /= (double)fractal->num_rows * (double)fractal->num_cols;
-
+	rng = &piece->rng;
 	i = -1;
 	while (++i < samples)
 	{
-		//-------------------normal rand samp here
-		pthread_mutex_lock(&fractal->rand_mtx);
-		c.x =  randf() * 4.0 - 2.0; //randf() * (new_max - new_min) + new_min 
-		//c.y =  randf() * (-2.0) + 2.0;//half and copy.
-		c.y =  randf() * (-4.0) + 2.0;//normal range
-		pthread_mutex_unlock(&fractal->rand_mtx);
-		sample_prob = 1;
-		buddha_iteration(fractal, c, sample_prob, hist, slope_x, slope_y, complex_f);
+		c.x = (xoro128d(rng) * 4.0 - 2.0) * inv_zoom + move_x; //randfloat * (new_max - new_min) + new_min 
+		c.y = (xoro128d(rng) * y_lim + 2.0) * inv_zoom - move_y;//math opti these....
+		buddha_iteration(fractal, c, 1.0, hist, slope_x, slope_y, complex_f);
 	}
 	pthread_exit(NULL);
 }

@@ -80,6 +80,7 @@ void	print_buddha_guide(void)
 	ft_putstr_color_fd(1, "╠╣ [F2]     => Print this guide                    ╠╣\n", BRIGHT_BLUE);
 	ft_putstr_color_fd(1, "╠╣ [ESC]    => Exit and close window               ╠╣\n", BRIGHT_BLUE);
 	ft_putstr_color_fd(1, "╠╣ [F3]     => Export image to png                 ╠╣\n", BRIGHT_BLUE);
+	ft_putstr_color_fd(1, "╠╣ [F]      => Switch filter type                  ╠╣\n", BRIGHT_BLUE);
 	ft_putstr_color_fd(1, "╠╣ [0]      => Print color settings info           ╠╣\n", BRIGHT_BLUE);
 	ft_putstr_color_fd(1, "╠╣ [TAB]    => Toggle on/off 2nd layer functions   ╠╣\n", BRIGHT_BLUE);
 	ft_putstr_color_fd(1, "╠╣                                                 ╠╣\n", BRIGHT_BLUE);

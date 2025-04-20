@@ -4,28 +4,29 @@ void	density_color_pixel(t_fractal *fractal, int x, int y, double highest)
 {
 	unsigned int	color;
 	double			log_density;
-	unsigned int	color1;
-	unsigned int	color2;
 
-	log_density = log(*(*(fractal->fdensity + x) + y));
-	color = calc_color_4(log_density, log(highest), &fractal->colors);
+	log_density = log(fractal->fdensity[y][x]);
+
+	color = calc_color_4(log_density, log(highest), &fractal->colors);//Prpb is here.. out of bounds color?..
+	
+	
 	put_pixel(x, y, fractal, color);
 }
 
 void	density_color(t_fractal *fractal)
 {
-	int	x;
-	int	y;
+	int		x;
+	int		y;
+	double	highest;
 	
-	double highest;
 	highest = high_hit_countf(fractal->width, fractal->height, fractal->fdensity);
-	x = -1;
-	while (++x < fractal->width)
+	y = -1;
+	while (++y < fractal->height)
 	{
-		y = -1;
-		while (++y < fractal->height)
+		x = -1;
+		while (++x < fractal->width)
 		{
-			if (fractal->fdensity[x][y] > 0)
+			if (fractal->fdensity[y][x] > 0)
 				density_color_pixel(fractal, x, y, highest);
 		}
 	}
@@ -39,7 +40,6 @@ void	free_fern(double **vals, int j)
 		vals[j] = NULL;
 	}
 	free(vals);
-	vals = NULL;
 }
 
 double	**alloc_fern(t_fractal *fractal, double **vals)
@@ -164,12 +164,12 @@ void	zero_fdensity(t_fractal *fractal)
 	int	i;
 	int	j;
 
-	i = -1;
-	while (++i < fractal->width)
+	j = -1;
+	while (++j < fractal->height)
 	{
-		j = -1;
-		while (++j < fractal->height)
-			*(*(fractal->fdensity + i) + j) = 0;
+		i = -1;
+		while (++i < fractal->width)
+			fractal->fdensity[j][i] = 0;
 	}
 }
 
@@ -195,12 +195,13 @@ double	high_hit_countf(long width, long height, int **density)
 
 void	free_fdensity(t_fractal *fractal, int j)
 {
+	if (!fractal->fdensity)
+		return ;
 	while (--j >= 0)
 	{
 		free(fractal->fdensity[j]);
 		fractal->fdensity[j] = NULL;
 	}
 	free(fractal->fdensity);
-
 	fractal->fdensity = NULL;
 }
