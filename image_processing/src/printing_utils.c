@@ -22,7 +22,9 @@ static void	print_loops(double **matrix, int rows, int cols, int *col_widths)
 	int col;
 	int spaces;
 	
-	printf("2D convo Kernel:\n\n");
+	//printf("2D convo Kernel:\n\n");
+	printf("matrix vals:\n\n");
+
 	row = -1;
     while (++row < rows)
 	{
@@ -31,7 +33,7 @@ static void	print_loops(double **matrix, int rows, int cols, int *col_widths)
         {
 			if (col_widths[col] < 0 && matrix[col][row] >= 0)
 				printf(" ");
-			printf("%.1f", matrix[col][row]);
+			printf("%.3f", matrix[col][row]);
 			if (col != cols - 1)
 			{
 				if (col_widths[col] < 0)

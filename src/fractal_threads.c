@@ -185,13 +185,16 @@ void	set_pieces_map(t_fractal *fractal, t_piece piece[][fractal->num_cols], int 
 	piece[j][i].y_s = j * (((fractal->height) * (map_n)) / fractal->num_rows);
 	piece[j][i].y_e = (j + 1) * (((fractal->height) * (map_n)) / fractal->num_rows);
 	piece[j][i].fractal = fractal;
+	sxoro128(&piece[j][i].rng, j * 142857);
+
+
 
 	/* piece[j][i].x_s = ft_round((double)i * ((double)fractal->width * map_n) / (double)fractal->num_cols);
 	piece[j][i].x_e = ft_round(((double)i + 1) * ((double)fractal->width * map_n) / (double)fractal->num_cols);
 	piece[j][i].y_s = ft_round((double)j * ((double)fractal->height * map_n) / (double)fractal->num_rows);
 	piece[j][i].y_e = ft_round(((double)j + 1) * ((double)fractal->height * map_n) / (double)fractal->num_rows);
-	piece[j][i].fractal = fractal;
- */
+	piece[j][i].fractal = fractal; */
+
 }
 
 //build importance map on a channel using grid sampling for best representation of avg importance
@@ -208,9 +211,9 @@ void	buddha_map(t_fractal *fractal)
 		i = -1;
 		while (++i < fractal->num_cols)
 		{
-			if (!fractal->move_y && fractal->buddha->copy_half)
+			/* if (!fractal->move_y && fractal->buddha->copy_half)
 				set_pieces_half_map(fractal, piece, i, j);
-			else	
+			else	 */
 				set_pieces_map(fractal, piece, i, j);
 			if (pthread_create(&fractal->threads[j * fractal->num_cols + i], NULL, \
 				buddha_set_map, (void *)&piece[j][i]) != 0)

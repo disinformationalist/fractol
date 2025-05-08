@@ -38,6 +38,8 @@
 \n or \t\"./fractol buddha <width> <height> <type>\" \
 \n or \t\"./fractol fern <width> <height>\"\n"
 
+typedef long double ld_;
+
 typedef struct s_complex
 {
 	double	x;
@@ -55,6 +57,7 @@ typedef double (*num_f)(double);
 typedef double (*den_f)(double, double);
 
 typedef void (*f_simd)(__m256d, __m256d, __m256d*, __m256d*);
+
 
 /***STRUCTS***/
 
@@ -129,6 +132,7 @@ typedef struct s_buddha
 	bool	fast;
 	bool	copy_half;
 
+	void	*mlx_win_map;
 } t_buddha;
 
 typedef struct s_fractal
@@ -194,10 +198,58 @@ typedef struct s_fractal
 	int 			id;
 }	t_fractal;
 
+//comps for buddha 
+
+typedef struct s_comps
+{
+	double	n;
+	double	samples;
+	double	width;
+	double	height;
+	int		b_max_i;
+	int		b_min_i;
+
+	double	slopex_to;
+	double	slopey_to;
+	double 	slopex_back;
+	double 	slopey_back;
+	
+	int		x;
+	int		y;
+	int		hist;
+
+	double	move_x;
+	double	move_y;
+	double	zoom;
+	double	inv_zoom;
+
+	double	x_cmin;
+	double	x_cmax;
+	double	y_cmin;
+	double	y_cmax;
+	double	x_span;
+	double	y_span;
+
+	double	**density;
+	double	**pdf;
+
+	double	**subpdf;
+	double	sn;
+	int		nn;
+	int		ss;
+
+	double	step;
+	double	bound;
+
+	f		complex_f;
+
+}	t_comps;
+
 //thread data for each thread
 
 typedef struct s_piece
 {
+	int			id;
 	int			x_s;
 	int			x_e;
 	int			y_s;
@@ -229,6 +281,7 @@ void		fern(t_fractal *fractal);
 //some buddha utils
 void		render_buddha(t_fractal *fractal);
 double 		randf();
+t_comps		set_comps(t_fractal *fractal, bool map);
 void		zero_matrix(double **matrix, int width, int height);
 void		init_matricies(t_fractal *fractal);
 void		zero_densities(t_fractal *fractal);
@@ -239,7 +292,7 @@ void		color_buddha(t_fractal *fractal);
 int			binary_search(double *cdf, int size, double value);
 void		set_vals(t_fractal *fractal, int min_1, int min_2, int min_3, int max_1, int max_2, int max_3, f complex_f);
 void		buddha_iter_fullmap(t_fractal *fractal, t_complex c, double slope_x, double slope_y, f complex_f);
-void		buddha_iteration(t_fractal *fractal, t_complex c, double weight, int k, double slope_x, double slope_y, f complex_f);
+void		buddha_iteration(t_fractal *fractal, t_complex c, double weight, t_comps comps);
 
 double		pow_ft(double num, double power);
 

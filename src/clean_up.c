@@ -49,6 +49,8 @@ int	close_handler(t_fractal *fractal)
 	mlx_destroy_image(fractal->mlx_connect, fractal->img.img_ptr);
 	mlx_destroy_image(fractal->mlx_connect, fractal->img_2.img_ptr);
 	mlx_destroy_window(fractal->mlx_connect, fractal->mlx_win);
+	if (fractal->buddha->mlx_win_map)
+		mlx_destroy_window(fractal->mlx_connect, fractal->buddha->mlx_win_map);
 	mlx_destroy_display(fractal->mlx_connect);
 	free(fractal->w_colors);
 	free(fractal->threads);

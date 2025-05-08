@@ -11,7 +11,6 @@
 /* ************************************************************************** */
 
 #include "fractol.h"
-#include "xoro128.h"
 
 void	set_type(t_fractal *f, int n)
 {
@@ -31,16 +30,16 @@ void	set_type(t_fractal *f, int n)
 
 void	check_width_height(t_fractal *frac)
 {
-	if (frac->width < 10 || frac->width > 10000)
+	/* if (frac->width < 10 || frac->width > 10000)
 	{
 		putstr_fd("Width must be greater than 10 and less than 10000\n", STDERR_FILENO);
 		exit(EXIT_FAILURE);
-	}
-	else if (frac->height < 10 || frac->height > 10000)
+	} */
+	/* else if (frac->height < 10 || frac->height > 10000)
 	{
 		putstr_fd("Width must be greater than 10 and less than 10000\n", STDERR_FILENO);
 		exit(EXIT_FAILURE);
-	}
+	} */
 	if (frac->id == 3 && frac->width != frac->height)
 	{
 		putstr_fd("Width and height must be equal for buddhabrot\n", STDERR_FILENO);
@@ -115,16 +114,3 @@ int	main(int ac, char **av)
 	render(&fractal);
 	mlx_loop(fractal.mlx_connect);
 }
-
-/*// working. use include where needed and separate seed states fror each thread.
-
-int main() {
-    sxoro128(123456789); // Choose any seed
-
-    for (int i = 0; i < 10; i++) {
-        printf("Random %d: %f\n", i, xoro128d());
-    }
-
-    return 0;
-}
- */

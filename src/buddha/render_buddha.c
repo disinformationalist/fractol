@@ -2,8 +2,16 @@
 
 void	put_pixel2(int x, int y, t_fractal *fractal, unsigned int color)
 {
+	if (fractal->hist_num == 1)
+		color = color << 8;
+	else if (fractal->hist_num == 2)
+		color = color << 16;
+
 	if (!fractal->supersample)
-		my_pixel_put(x, y, &fractal->img_2, color);
+	{
+		//my_pixel_put(x, y, &fractal->img_2, color);
+		my_pixel_put_plus(x, y, &fractal->img_2, color);
+	}
 	else
 		fractal->pixels_xl[y][x] = color;
 }
@@ -30,13 +38,14 @@ double	high_hit_count(int width, int height, double **density)
 
 void create_cdf(t_fractal *fractal, double **pdf)
 {
-	int width = fractal->width;
-	int height = fractal->height;
-	int size = width * height;
-	double *cdf = fractal->cdf;
-	double cumulative_sum = 0.0;
-    int index = 0;
-    for (int j = 0; j < height; j++)
+	int		width = fractal->width;
+	int		height = fractal->height;
+	int		size = width * height;
+	double	*cdf = fractal->cdf;
+	double	cumulative_sum = 0.0;
+    int		index = 0;
+    
+	for (int j = 0; j < height; j++)
 	{
         for (int i = 0; i < width; i++)
 		{
@@ -45,14 +54,37 @@ void create_cdf(t_fractal *fractal, double **pdf)
             index++;
         }
     }
-
     // Normalize the CDF so that the last element is exactly 1.0
 	double norm_factor =  1.0 / cumulative_sum;
 	for (int k = 0; k < size; k++)
       cdf[k] *= norm_factor;
 }
 
-void build_importance_map(t_fractal *fractal, int buddha_iters, int k)
+void	show_map(t_fractal *fractal, double **density)
+{
+	int i, j;
+	double	importance;
+    double	*density_row;
+	int high_density = high_hit_count(fractal->width, fractal->height, density);
+	j = -1;
+	while (++j < fractal->height)
+	{
+		i = -1;
+		density_row = density[j];
+		while (++i < fractal->width)
+		{
+			importance = fmin(255, density_row[i] * 10 / (double)high_density);
+			put_pixel2(j, i, fractal, (importance * 255.0));		
+		}
+	}
+	fractal->buddha->mlx_win_map = mlx_new_window(fractal->mlx_connect, fractal->width, fractal->height, "Importance map");
+	if (fractal->mlx_win == NULL)
+		clear_all(fractal);
+	mlx_put_image_to_window(fractal->mlx_connect,
+		fractal->buddha->mlx_win_map, fractal->img_2.img_ptr, 0, 0);
+}
+
+void	build_importance_map(t_fractal *fractal, double **density)
 {
 	int		i;
 	int		j;
@@ -60,16 +92,20 @@ void build_importance_map(t_fractal *fractal, int buddha_iters, int k)
 	double 	norm_factor;
 	double	**pdf = fractal->pdf;
     double	*densities_row;
+	double	prob;
 	
-	sum = get_matrix_sum(fractal->densities[k], fractal->width, fractal->height);
+	sum = get_matrix_sum(density, fractal->width, fractal->height);
 	norm_factor = 1.0 / sum;
 	j = -1;
 	while (++j < fractal->height)
 	{
 		i = -1;
-		densities_row = fractal->densities[k][j];
+		densities_row = density[j];
 		while (++i < fractal->width)
-			pdf[j][i] = (densities_row[i] * norm_factor);
+		{
+			prob = (densities_row[i] * norm_factor);
+			pdf[j][i] = prob;
+		}
 	}
 	create_cdf(fractal, fractal->pdf);
 }
@@ -107,7 +143,8 @@ void	run_and_reset(t_fractal *fractal, int buddha_min, int buddha_iters, char ch
 	{
 		printf(MAGENTA"Mapping channel: "BLUE"%d ...\n"RESET, hist);
 		buddha_map(fractal);
-		build_importance_map(fractal, buddha_iters, hist);
+		build_importance_map(fractal, fractal->densities[hist]);
+		//show_map(fractal, fractal->densities[fractal->hist_num]);//for diagnostics
 		print_times(map_start, get_time(), "\0", "Map channel time  : %f seconds\n", MAGENTA);
 	}
 	run_start = get_time();
@@ -138,6 +175,7 @@ void	render_buddha(t_fractal *fractal)
 	run_and_reset(fractal, fractal->buddha->min2, fractal->buddha->max2, 'g');
 	run_and_reset(fractal, fractal->buddha->min3, fractal->buddha->max3, 'r');
 	color_buddha(fractal);
+
 	print_times(start, get_time(), "RENDER COMPLETE\n", "Total render time : "GREEN"%f"RESET" seconds\n", BOLD_BLUE);
 }
 

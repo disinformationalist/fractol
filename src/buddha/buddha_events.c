@@ -128,7 +128,7 @@ void	change_filter(t_buddha *b)
 		b->ftype = 0;
 }
 
-void buddha_handler(int keysym, t_fractal *fractal)//todo fchan change
+void buddha_handler(int keysym, t_fractal *fractal)
 {
 	t_buddha *b;
 
@@ -161,6 +161,8 @@ void buddha_handler(int keysym, t_fractal *fractal)//todo fchan change
 		print_buddha_vals(b, fractal);
 		return ;
 	}
+	else if (keysym == N_9)
+		b->smootherstep = !b->smootherstep;
 	if (!fractal->supersample)
 	{
 		ft_memset(fractal->img.pixels_ptr, 0, fractal->width_orig * fractal->height_orig * (fractal->img.bpp / 8));	
