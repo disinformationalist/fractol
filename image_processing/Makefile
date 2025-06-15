@@ -46,7 +46,11 @@ $(NAME): $(OBS)
 	ar rcs $(NAME) $(OBS)
 	$(call print_colored, "[SUCCESS]", "archive $(NAME)", "Ready")
 
+#$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
+#	$(CC) $(CFLAGS) -c $< -o $@
+
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
+	mkdir -p $(@D)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:

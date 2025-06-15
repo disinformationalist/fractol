@@ -38,6 +38,10 @@ void	sample_pixel_grid(t_fractal *fractal, int x, int y, t_comps comps, Xoro128 
 	double 		sample_prob = comps.pdf[y][x];
 	int 		pix_samples = ft_round(comps.samples * sample_prob);
 	int 		limit = ft_round(sqrt(pix_samples));
+	
+	if (sample_prob < 1e-8)
+	sample_prob = 1e-8;
+	
 	double		weight = 1.0 / sample_prob;
 
 	offset = 1.0 / limit;
@@ -148,7 +152,6 @@ void	sample_subpix(t_fractal *fractal, double **pixpdf, double pix_samps, double
 	double 		subsamp_prob = pixpdf[j][i];
 	int 		sub_samples = ft_round(pix_samps * subsamp_prob);
 	
-
 	if (subsamp_prob < 1e-8)
     subsamp_prob = 1e-8;
 
@@ -172,16 +175,13 @@ void	sample_pixel(t_fractal *fractal, int x, int y, t_comps comps, Xoro128 *rng)
 	double 		sample_prob = comps.pdf[y][x];
 	int 		pix_samples = ft_round(comps.samples * sample_prob);
 
-
-	if (pix_samples == 0)
+	/* if (pix_samples == 0)
 		return ;
-	
-
 	if (sample_prob < 1e-8)
     	sample_prob = 1e-8;
-
+ */
 	//if (pix_samples < 4)//try tiered sampling,  if  low < samples < high
-	/* {
+	{
 		double		weight = 1.0 / sample_prob;
 		i = -1;
 		while (++i < pix_samples)
@@ -190,37 +190,23 @@ void	sample_pixel(t_fractal *fractal, int x, int y, t_comps comps, Xoro128 *rng)
 			c.y = map_2((double)y + xoro128d(rng), comps.y_cmin, comps.slopey_to);// * comps.inv_zoom - comps.move_y;
 			buddha_iteration(fractal, c, weight, comps);
 		}
-	} */
+	}
 	//else //subsamp--
-	{
+/* 	{
 		int a, b;
-		//int dim = ft_round(comps.zoom + 1);
-		//int dim = ft_round(sqrt(pix_samples));
-		//int dim = ft_round(sample_prob * sqrt(pix_samples));
-//		int dim = ft_clamp(ft_round(comps.zoom * sqrt(pix_samples) * sample_prob), 2, 16);
-		//int dim = ft_clamp(ft_round(comps.zoom / sample_prob), 2, 16);
 		int dim = ft_round(sqrt(comps.zoom)) + 1;
-		/* if (pix_samples > 3000)
-		printf("samples: %d dim: %d\n", pix_samples, dim); */
-
-		//comps.subpdf = map_sub_pixel(x, y, comps);//pack into a 1d later for speed using for fixed
 		double **subpdfv = map_sub_pixel(x, y, dim, comps);
-		//print_matrix(subpdf, 3, 3);
 		b = 0;
 		for (b = 0; b < dim; b++)
 		{
 			a = 0;
 			for (a = 0; a < dim; a++)
-				sample_subpix(fractal, subpdfv, pix_samples, y, x, b, a, comps, rng, sample_prob, dim);
-			//sample_subpix(fractal, comps.subpdf, pix_samples, y, x, b, a, comps, rng, sample_prob);
-				
+				sample_subpix(fractal, subpdfv, pix_samples, y, x, b, a, comps, rng, sample_prob, dim);				
 		}
-		free_matrix_i(subpdfv, dim);//--
-	}
+		free_matrix_i(subpdfv, dim);
+	} */
 }
-/* for (b = 0; b < dim; b++)
-	for (a = 0; a < dim; a++)
-		subpdfv[b][a] = 0.0;  */
+
 
 /* //within win
 c.x = map_2((double)x + offset_x, -2, comps.slopex_to) * comps.inv_zoom + comps.move_x;
@@ -230,6 +216,98 @@ buddha_iteration(fractal, c, weight, comps); */
 c.y = ((double)y - comps.height / 2 + offset_y) / (comps.height) * comps.span / comps.zoom - comps.move_y; */
 
 //double aspect = (double)fractal->width / (double)fractal->height;
+
+//this version is with premalloc
+
+double	**map_sub_pixel2(double x, double y, t_comps comps)
+{
+	double		sx, sy, hits, total;
+	int			i, j;
+	t_complex	c;
+
+	total = 0;
+	for (j = 0; j < comps.nn; j++)
+	{
+		for (i = 0; i < comps.nn; i++)
+		{
+			hits = 0;
+			for (int sj = 0; sj < comps.ss; sj++)
+			{
+				for (int si = 0; si < comps.ss; si++)
+				{
+					sx = x + ((double)i + ((double)si + 0.5) / (double)comps.ss) * comps.step;
+					sy = y + ((double)j + ((double)sj + 0.5) / (double)comps.ss) * comps.step;
+					c.x = map_2(sx, comps.x_cmin, comps.slopex_to);
+					c.y = map_2(sy, comps.y_cmin, comps.slopey_to);
+					hits += get_hits(c, comps);
+				}
+			}
+			comps.subpdf[j][i] = hits;
+			total += hits;
+		}
+	}
+	if (total == 0)
+		total = 1.0;
+	for (j = 0; j < comps.nn; j++)
+	{
+		for (i = 0; i < comps.nn; i++)
+			comps.subpdf[j][i] /= total;
+	}
+	return (comps.subpdf);
+}
+
+//this version is for use with premalloc
+
+void	sample_subpix2(t_fractal *fractal, double **pixpdf, double pix_samps, double y, double x, int j, int i, t_comps comps, Xoro128 *rng, double samp_prob)
+{
+	int 		z;
+	t_complex	c;
+	double 		subsamp_prob = pixpdf[j][i];
+	int 		sub_samples = ft_round(pix_samps * subsamp_prob);
+	
+	if (subsamp_prob < 1e-8)
+    subsamp_prob = 1e-8;
+
+	double	weight = 1.0 / (subsamp_prob * samp_prob);
+	z = -1;
+	while (++z < sub_samples)
+	{	
+		c.x = map_2((double)x + ((double)i + xoro128d(rng)) * comps.step, comps.x_cmin, comps.slopex_to);
+		c.y = map_2((double)y + ((double)j + xoro128d(rng)) * comps.step, comps.y_cmin, comps.slopey_to);
+		buddha_iteration(fractal, c, weight, comps);
+	}
+}
+
+//this version is with pre malloc.
+
+void	sample_pixel2(t_fractal *fractal, int x, int y, t_comps comps, Xoro128 *rng)
+{
+	int 		i;
+	t_complex	c;
+	double 		sample_prob = comps.pdf[y][x];
+	int 		pix_samples = ft_round(comps.samples * sample_prob);
+
+	if (pix_samples == 0)
+		return ;
+	if (sample_prob < 1e-8)
+    	sample_prob = 1e-8;
+
+	{
+		int a, b;
+		comps.subpdf = map_sub_pixel2(x, y, comps);//pack into a 1d later for speed using for fixed
+		b = 0;
+		for (b = 0; b < comps.nn; b++)
+		{
+			a = 0;
+			for (a = 0; a < comps.nn; a++)
+				sample_subpix2(fractal, comps.subpdf, pix_samples, y, x, b, a, comps, rng, sample_prob);
+		}
+		for (b = 0; b < comps.nn; b++)
+			for (a = 0; a < comps.nn; a++)
+				comps.subpdf[b][a] = 0.0; 
+	}
+}
+
 static inline void	*buddha_set_fast(void *arg)
 {
 	t_piece 	*piece;
@@ -254,7 +332,7 @@ static inline void	*buddha_set_fast(void *arg)
 	x = -1;
 	while (++x < piece->x_e)//last row
 		sample_pixel(fractal, x, y, comps, &piece->rng);
-	//free_matrix_i(comps.subpdf, (int)comps.sn);
+	//free_matrix_i(comps.subpdf, (int)comps.sn);//for using premalloc subpdf
 	pthread_exit(NULL);
 }
 

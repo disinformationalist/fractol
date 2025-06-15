@@ -50,6 +50,7 @@ void	init_buddha(t_fractal *fractal)
 	b->fchan = 0;
 	b->flevel = 5;
 	b->ftype = MEAN;
+	b->mlx_win_map = NULL;
 
 
 	/* fractal->move_x = -0.0425;//.21//-x coord 
@@ -64,30 +65,31 @@ void	init_buddha(t_fractal *fractal)
 	fractal->move_y = 0.989751;
 	fractal->zoom = 55150;//55150 */
 
-	b->fast = 1;//true;
-	b->copy_half = false;
-	b->n = 4;//can use doubles on these as well
+	b->fast = true;
+	b->copy_half = true;
+	b->n = 5;//can use doubles on these as well
 	b->map_n = b->n - 1;
 	type = b->type;
 	b->smootherstep = false;
-
+//.86,.93., .83   -.05, .7,.5,.55
 	if (type == BUDDHA1)
 	{
+		b->smootherstep = true;
 		if (b->smootherstep)
-			set_powers(b, .43, .38, .35);//b,g,r
+			set_powers(b, .40, .35, .33);// bitter?
+			//set_powers(b, .43, .38, .35);
 		else
 			set_powers(b, 1, 1, 1);
-
 		set_edge_vals(b, .35, .35, .35, .65, .65, .65);
-	//	set_vals(fractal, 0, 0, 0, 80, 500, 1200, &square_complex);
-		set_vals(fractal, 0, 0, 0, 50, 300, 2750, &square_complex);
-
+		set_vals(fractal, 0, 0, 0, 50, 500, 5000, &square_complex);
+			//set_vals(fractal, 0, 0, 0, 50, 300, 2750, &square_complex);
 	}
 	else if (type == BUDDHA2)//stormcloud buddha
 	{
-		set_powers(b, .5, .65, .6);
-		set_edge_vals(b, .20, .0, .0, .55, .55, .6);//set_powers(b, .45, .7, .65);
+		set_powers(b, .5, .65, .6);//set_powers(b, .45, .7, .65);
+		set_edge_vals(b, .20, .0, .0, .55, .55, .6);
 		set_vals(fractal, 20, 55, 55, 350, 500, 3500, &square_complex);
+		//set_vals(fractal, 0, 0, 0, 350, 500, 3500, &square_complex);//.27.28.29, .3 - .7 edgev.
 	}
 	else if (type == LOTUS)
 	{
@@ -95,7 +97,6 @@ void	init_buddha(t_fractal *fractal)
 		set_powers(b, .5, .65, .65);
 		set_edge_vals(b, .05, .05, .05, .6, .6, .6);
 		set_vals(fractal, 20, 55, 100, 150, 200, 3000, &square_complex_conj);
-		//set_vals(fractal, 25, 80, 160, 150, 300, 2500, &square_complex_conj);
 	}
 	else// (type == PHEONIX)
 	{
@@ -104,14 +105,8 @@ void	init_buddha(t_fractal *fractal)
 		set_edge_vals(b, .05, .05, .05, .6, .6, .6);
 		set_vals(fractal, 12, 55, 55, 250, 600, 3000, &cube_ship);
 		fractal->move_x = 0;
+		b->copy_half = false;
 	}
-
-	//set_vals(fractal, 12, 100, 60, 2000, 350, 2500, &square_complex_conj);//maybe lotus sq_comp_conj, .5, .65, .65. .45 .6 .5
-	//set_vals(fractal, 30, 55, 55, 350, 500, 3500, &square_complex);//stormcloud buddha
-	//set_vals(fractal, 12, 100, 150, 2000, 2500, 3500, &square_complex);
-	//set_vals(fractal, 25, 55, 100, 150, 200, 3000, &square_complex);//need to play with for a buddha version
-
-	//set_vals(fractal,  12, 100, 150, 2000, 2500, 3500, &square_complex);//old like mill
 }	
 
 void	info_init(t_fractal *fractal)
@@ -140,7 +135,6 @@ void	info_init(t_fractal *fractal)
 	fractal->cdf = NULL;
 	fractal->fdensity = NULL;
 	fractal->pixels_xl = NULL;
-	fractal->buddha->mlx_win_map = NULL;
 }
 
 static void	events_init(t_fractal *fractal)
@@ -165,6 +159,7 @@ void	fractal_init(t_fractal *fractal)
 	if (fractal->mlx_connect == NULL)
 		exit(EXIT_FAILURE);
 	fractal->mlx_win = mlx_new_window(fractal->mlx_connect, fractal->width, fractal->height, fractal->name);
+	//fractal->mlx_win = mlx_new_window(fractal->mlx_connect, 20, 20, "bud");
 	if (fractal->mlx_win == NULL)
 		clear_all(fractal);
 	if (new_img_init(fractal->mlx_connect, &fractal->img, fractal->width, fractal->height) == -1)

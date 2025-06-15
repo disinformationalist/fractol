@@ -27,6 +27,15 @@ Command line input: exiftool image_1.png */
 	png_set_text(png_ptr, info, text, 1);
 } */
 
+//using this ft to match the mlx window output
+
+/* static uint8_t flatten_gamma(uint8_t c)
+{
+    float f = c / 255.0f;
+    float corrected = powf(f, 1.157); // gamma encode less
+    return (uint8_t)(corrected * 255.0f + 0.5f);
+} */
+
 int	set_png_pixels(t_png_io *png_img, t_img *img, int height, int width)
 {
 	png_byte	*row;
@@ -50,6 +59,9 @@ int	set_png_pixels(t_png_io *png_img, t_img *img, int height, int width)
 			*row++ = png_img->temp_pixel.red;
 			*row++ = png_img->temp_pixel.green;
 			*row++ = png_img->temp_pixel.blue;
+			/* *row++ = flatten_gamma(png_img->temp_pixel.red);
+			*row++ = flatten_gamma(png_img->temp_pixel.green);
+			*row++ = flatten_gamma(png_img->temp_pixel.blue); */
 			*row++ = 255;
 		}
 	}
@@ -122,6 +134,10 @@ int	export_png(const char *filename, t_img *img, int width, int height, png_text
 	png_set_IHDR(png_img->png_ptr, png_img->info, width, height, \
 	png_img->depth, PNG_COLOR_TYPE_RGBA, PNG_INTERLACE_NONE, \
 	PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
+
+	//png_set_gAMA(png_img->png_ptr, png_img->info, 1.0);//---
+	//png_set_sRGB(png_img->png_ptr, png_img->info, PNG_sRGB_INTENT_PERCEPTUAL);//---
+
 	png_img->row_pointers = png_malloc(png_img->png_ptr, height \
 	* sizeof(png_byte *));
 	if (!png_img->row_pointers)

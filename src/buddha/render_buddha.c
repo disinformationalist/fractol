@@ -77,7 +77,8 @@ void	show_map(t_fractal *fractal, double **density)
 			put_pixel2(j, i, fractal, (importance * 255.0));		
 		}
 	}
-	fractal->buddha->mlx_win_map = mlx_new_window(fractal->mlx_connect, fractal->width, fractal->height, "Importance map");
+	fractal->buddha->mlx_win_map = mlx_new_window(fractal->mlx_connect, fractal->width, \
+		fractal->height, "Importance map");
 	if (fractal->mlx_win == NULL)
 		clear_all(fractal);
 	mlx_put_image_to_window(fractal->mlx_connect,
@@ -175,7 +176,6 @@ void	render_buddha(t_fractal *fractal)
 	run_and_reset(fractal, fractal->buddha->min2, fractal->buddha->max2, 'g');
 	run_and_reset(fractal, fractal->buddha->min3, fractal->buddha->max3, 'r');
 	color_buddha(fractal);
-
 	print_times(start, get_time(), "RENDER COMPLETE\n", "Total render time : "GREEN"%f"RESET" seconds\n", BOLD_BLUE);
 }
 

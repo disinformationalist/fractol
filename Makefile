@@ -53,7 +53,7 @@ SRCS = $(wildcard $(SRC_DIR)/*.c) $(wildcard $(SRC_DIR)/*/*.c)
 
 #CFLAGS := -Wall -Wextra -Werror -I$(INC_DIR) -O2 -march=native -w
 CFLAGS := -Wall -Wextra -Werror -I$(INC_DIR) -g -O2 -mavx -mavx2 -march=native -Wno-unused-parameter -Wunused-result 
-CFLAGS += -Wno-unused-result -Wno-unused-variable
+CFLAGS += -Wno-unused-result -Wno-unused-variable -Wno-unused-function
 CC := cc
 
 

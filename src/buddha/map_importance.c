@@ -20,18 +20,14 @@ void	track_importance(t_fractal *fractal, t_complex c, t_comps comps, double n, 
 		iterations++;
 		x = ft_round(map_back_2((z.x - comps.move_x) * comps.zoom, comps.x_cmin, comps.slopex_back));
 		y = ft_round(map_back_2((z.y + comps.move_y) * comps.zoom, comps.y_cmin, comps.slopey_back));
-
 		if (x >= 0 && x < comps.width && y >= 0 && y < comps.height)
 			count_hits++;
 	}
 	i = (n / comps.n);//xpix
 	j = (m / comps.n);//ypix
-	//if (i >= 0 && i < fractal->width && j >= 0 && j < fractal->height)
-	{ 
-		pthread_mutex_lock(&fractal->mutex);
-		comps.density[j][i] += count_hits;
-		pthread_mutex_unlock(&fractal->mutex);
-	}
+	pthread_mutex_lock(&fractal->mutex);
+	comps.density[j][i] += count_hits;//try with store x, y
+	pthread_mutex_unlock(&fractal->mutex);
 }
 /* 
 void	buddha_iteration_map(t_fractal *fractal, t_complex c, t_comps comps, double x, double y)
@@ -88,7 +84,6 @@ void	buddha_iteration_map(t_fractal *fractal, t_complex c, t_comps comps, double
 	track_importance(fractal, c, comps, x, y);
 }
 
-
 t_comps	set_comps(t_fractal *fractal, bool map)
 {
 	t_comps comps;
@@ -112,7 +107,10 @@ t_comps	set_comps(t_fractal *fractal, bool map)
 		comps.slopex_to = comps.x_span / (comps.width);
 		comps.slopey_to = comps.y_span / (comps.height);
 		//stuff for subpix map during actual run
-		comps.sn = comps.zoom * 2;//match with zoom
+		//if (comps.zoom > 1.5)
+			comps.sn = ft_round(sqrt(comps.zoom)) + 1;//comps.zoom * 2;//match with zoom
+		/* else
+			comps.sn = 1.0; */
 		comps.step = 1.0 / comps.sn;
 		comps.nn = (int)(comps.sn);
 		comps.ss = 3;// comps.ss² = samples per subpixel in submap
@@ -158,26 +156,27 @@ void	*buddha_set_map(void *arg)
 	t_complex	c;
 	t_comps		comps;
 	
-	double		x;
-	double		y;
+	int		x;
+	int		y;
 	
 	piece = (t_piece *)arg;
 	fractal = piece->fractal;
 	Xoro128		*rng = &piece->rng;
 	
 	comps = set_comps(fractal, true);
-	y = (double)piece->y_s - 1;
+	y = piece->y_s - 1;
 	while (++y < piece->y_e)
 	{
-		x = (double)piece->x_s - 1;
+		//comps.y = y;//
+		x = piece->x_s - 1;
 		while (++x < piece->x_e)
 		{
-		
-			c.x = map_2(x + .5, comps.x_cmin, comps.slopex_to);
-			c.y = map_2(y + .5, comps.y_cmin, comps.slopey_to);
+			//comps.x = x;//
+			c.x = map_2((double)x + .5, comps.x_cmin, comps.slopex_to);
+			c.y = map_2((double)y + .5, comps.y_cmin, comps.slopey_to);
 			buddha_iteration_map(fractal, c, comps, x, y);
 			
-			//trying the within window map
+			//trying the within window map, used for zooms away from main body
 			/* c.x = map_2(x, comps.x_cmin, comps.slopex_to) * comps.inv_zoom + comps.move_x;
 			c.y = map_2(y, comps.y_cmin, comps.slopey_to) * comps.inv_zoom - comps.move_y;
 			buddha_iteration_map(fractal, c, comps, x, y);	 */

@@ -30,19 +30,20 @@ void	set_type(t_fractal *f, int n)
 
 void	check_width_height(t_fractal *frac)
 {
-	/* if (frac->width < 10 || frac->width > 10000)
+	if (frac->width < 10 || frac->width > 10000)
 	{
 		putstr_fd("Width must be greater than 10 and less than 10000\n", STDERR_FILENO);
 		exit(EXIT_FAILURE);
-	} */
-	/* else if (frac->height < 10 || frac->height > 10000)
+	}
+	else if (frac->height < 10 || frac->height > 10000)
 	{
 		putstr_fd("Width must be greater than 10 and less than 10000\n", STDERR_FILENO);
 		exit(EXIT_FAILURE);
-	} */
+	}
 	if (frac->id == 3 && frac->width != frac->height)
 	{
 		putstr_fd("Width and height must be equal for buddhabrot\n", STDERR_FILENO);
+		free(frac->buddha);
 		exit(EXIT_FAILURE);
 	}
 }
@@ -97,9 +98,7 @@ int	main(int ac, char **av)
 	t_fractal	fractal;
 	
 	fractal.buddha = NULL;
-	
 	check_and_set_id(&fractal, ac, av);
-	//set_least_diff_pair(get_num_cores(), &fractal.num_rows, &fractal.num_cols);
 	fractal.num_cols = 1;
 	fractal.num_rows = get_num_cores();
 	fractal.threads = (pthread_t *)malloc(fractal.num_rows * fractal.num_cols * sizeof(pthread_t));

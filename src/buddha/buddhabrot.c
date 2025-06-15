@@ -173,20 +173,20 @@ void	*buddha_set(void *arg)//normal rand method much slower.
 	piece = (t_piece *)arg;
 	fractal = piece->fractal;
 	comps = set_comps(fractal, false);
-	/* if (!fractal->buddha->copy_half)
-		y_lim = -comps.span;
+	if (!fractal->buddha->copy_half)
+		y_lim = -comps.y_span;
 	else
-		y_lim = -comps.span / 2; */
+		y_lim = -comps.y_span / 2;
 	samples = comps.samples;
 	samples /= (double)fractal->num_rows * (double)fractal->num_cols;
 	rng = &piece->rng;
 	i = -1;
 	while (++i < samples)
 	{
-		/* c.x = (xoro128d(rng) * comps.span + comps.cmin) * comps.inv_zoom + comps.move_x; //randfloat * (new_max - new_min) + new_min 
-		c.y = (xoro128d(rng) * y_lim - comps.cmin) * comps.inv_zoom - comps.move_y;//math opti these.... */
-		c.x = (xoro128d(rng) * comps.x_span - comps.y_span / 2.0) + comps.move_x;//works... but doesnet us zoom at all
-		c.y = (xoro128d(rng) * -comps.y_span + comps.y_span / 2.0) - comps.move_y;
+		c.x = (xoro128d(rng) * comps.x_span + comps.x_cmin) * comps.inv_zoom + comps.move_x; //randfloat * (new_max - new_min) + new_min 
+		c.y = (xoro128d(rng) * y_lim - comps.y_cmin) * comps.inv_zoom - comps.move_y;//math opti these....
+		/* c.x = (xoro128d(rng) * comps.x_span - comps.y_span / 2.0) + comps.move_x;//works... but doesnet us zoom at all
+		c.y = (xoro128d(rng) * -comps.y_span + comps.y_span / 2.0) - comps.move_y; */
 		/* c.x = (map(p.x, -2, +2, (double)fractal->width) * inv_zoom + move_x);
 		c.y = (map(p.y, +2, -2, (double)fractal->height) * inv_zoom - move_y); */
 		buddha_iteration(fractal, c, 1.0, comps);

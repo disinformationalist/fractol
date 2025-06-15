@@ -15,18 +15,18 @@ SOBEL
 ->UNSHARP_MASKING use convo or gauss blurs? using gauss is standard*/ 
 //de noising monte, non- local means... etc.
 
-# include <stdlib.h>
-# include <stdio.h>
-# include <math.h>
-# include <stddef.h>
-# include <png.h>
-# include <stdint.h>
-# include <stdbool.h>
-# include <stdarg.h>
-# include "../../minilibx-linux/mlx.h"
-# include <pthread.h>
-# include "tools.h"
-# include <sys/time.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <math.h>
+#include <stddef.h>
+#include <png.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include <stdarg.h>
+#include "../../minilibx-linux/mlx.h"
+#include <pthread.h>
+#include "tools.h"
+#include <sys/time.h>
 
 
 # define SQ(x) ((x) * (x))

@@ -45,11 +45,10 @@ int	close_handler(t_fractal *fractal)
 {
 	pthread_mutex_destroy(&fractal->mutex);
 	pthread_mutex_destroy(&fractal->rand_mtx);
-
 	mlx_destroy_image(fractal->mlx_connect, fractal->img.img_ptr);
 	mlx_destroy_image(fractal->mlx_connect, fractal->img_2.img_ptr);
 	mlx_destroy_window(fractal->mlx_connect, fractal->mlx_win);
-	if (fractal->buddha->mlx_win_map)
+	if (fractal->id == 3 && fractal->buddha->mlx_win_map)
 		mlx_destroy_window(fractal->mlx_connect, fractal->buddha->mlx_win_map);
 	mlx_destroy_display(fractal->mlx_connect);
 	free(fractal->w_colors);
@@ -61,7 +60,7 @@ int	close_handler(t_fractal *fractal)
 		free(fractal->buddha);
 	}
 	if (fractal->fdensity)
-			free_fdensity(fractal, fractal->height);
+		free_fdensity(fractal, fractal->height);
 	exit(EXIT_SUCCESS);
 	return (0);
 }
