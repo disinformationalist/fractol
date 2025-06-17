@@ -79,7 +79,6 @@ void	init_matricies(t_fractal *fractal)
 	fractal->cdf = (double *)malloc(fractal->size * sizeof(double));
 	if (!fractal->cdf)
 		clear_all(fractal);
-	//memset(fractal->cdf, 0, fractal->size * sizeof(double));
 	fractal->densities = (double ***)malloc(histograms * sizeof(double **));
 	if (!fractal->densities)
 	{
@@ -101,6 +100,8 @@ void	init_matricies(t_fractal *fractal)
 	if (!fractal->density)
 		clear_all(fractal); */
 	fractal->pdf = malloc_matrix(fractal->width, fractal->height);//pro
+	if (!fractal->pdf)
+		clear_all(fractal);
 }
 
 void	zero_densities(t_fractal *fractal)

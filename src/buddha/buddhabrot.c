@@ -75,7 +75,6 @@ void	orbit_tracker(t_fractal *fractal, t_complex c, double weight, t_comps comps
 	/* y = ft_round((z.x - comps.move_x) / (comps.span / comps.zoom)) * comps.width;
 		x = ft_round((z.y + comps.move_y) / (comps.span / comps.zoom)) * comps.height; */
 		
-		
 /* 
 		y = ft_round(((z.x - move_x) * zoom + 2.0) / 4.0 * fractal->width);
 		x = ft_round(((z.y + move_y) * zoom - 2.0) / -4.0 * fractal->height); */
@@ -90,8 +89,10 @@ void	orbit_tracker(t_fractal *fractal, t_complex c, double weight, t_comps comps
 			//THIS MTX EATS TIME, without it mthread 3x+ faster than non, with it mthread is  3x+ SLOWER, very low prob of data race, insignificant
 			//other solution is to keep separate arrays for each thread and sum after thread join. Very memory intensive though
 			//pthread_mutex_lock(&fractal->mutex); 
+			
 			comps.density[y][x] += weight;// * (1.0 - (double)iterations / (double)bmax);
 			//pthread_mutex_unlock(&fractal->mutex);
+		
 		}
 	}
 }

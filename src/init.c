@@ -66,8 +66,8 @@ void	init_buddha(t_fractal *fractal)
 	fractal->zoom = 55150;//55150 */
 
 	b->fast = true;
-	b->copy_half = true;
-	b->n = 5;//can use doubles on these as well
+	b->copy_half = 0;//true;
+	b->n = 10;//can use doubles on these as well
 	b->map_n = b->n - 1;
 	type = b->type;
 	b->smootherstep = false;
@@ -111,6 +111,8 @@ void	init_buddha(t_fractal *fractal)
 
 void	info_init(t_fractal *fractal)
 {
+
+	fractal->buffs = 4;
 	fractal->bound = 4;
 	fractal->num_colors = 360;
 	fractal->max_i = 80;
@@ -129,7 +131,7 @@ void	info_init(t_fractal *fractal)
 	fractal->supersample = 0;
 	fractal->layer = 0;
 	fractal->s_kernel = 3;
-	fractal->histograms = 3;
+	fractal->histograms = fractal->buffs * 3;
 	fractal->species = 0;
 	fractal->aspect = (double)fractal->height_orig / (double)fractal->width_orig;
 	fractal->cdf = NULL;

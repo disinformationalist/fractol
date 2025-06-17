@@ -124,6 +124,107 @@ void	set_channel(t_fractal *fractal, int buddha_min, int buddha_iters, char chan
 		fractal->hist_num = 2;
 }
 
+
+
+
+void	combine_buff_set_var(double ***densities, int hist, int buffs, int width, int height)
+{
+	int		j;
+	int		i;
+	int		k;
+	double	avg;
+	double	var;
+	double	sum;
+
+		j = -1;
+		while (++j < height)
+		{
+			i = -1;
+			while (++i < width)
+			{
+				k = -1;
+				sum = 0;
+				//get avg
+				while (++k < buffs)
+					sum += densities[hist + k * 3][j][i];
+				avg = sum / buffs;
+				k = -1;
+				sum = 0;
+				//get var
+				while (++k < buffs)
+				{
+					double v1 = avg - densities[hist + k * 3][j][i];
+					sum += v1 * v1;
+				}
+				var = sum / buffs;
+				densities[hist][j][i] = avg;
+				densities[hist + 3][j][i] = var;
+			}
+		}
+}
+
+double	**nlm_channel(double **color, double **var, int width, int height)
+{
+	int f = 2; //patch_rad;
+	int r = 10; //search_rad;
+	double kc = 1.0;
+	double eps = 1e-8;
+	double **out;
+
+	out = malloc_matrix(width, height);
+	for (int j = 0; j < height; j++)
+	{
+		for (int i = 0; i < width; i++)
+		{
+			double total_weight = 0.0;
+			double filtered_val = 0.0;
+			  for (int dy = -r; dy <= r; dy++) {
+                for (int dx = -r; dx <= r; dx++) {
+                    int qx = i + dx;
+                    int qy = j + dy;
+
+                    if (qx < 0 || qx >= width || qy < 0 || qy >= height)
+                        continue;
+
+                    double d2 = 0.0;
+
+                    for (int py = -f; py <= f; py++) {
+                        for (int px = -f; px <= f; px++) {
+                            int p1x = i + px, p1y = j + py;
+                            int p2x = qx + px, p2y = qy + py;
+
+                            if (p1x < 0 || p1x >= width || p1y < 0 || p1y >= height ||
+                                p2x < 0 || p2x >= width || p2y < 0 || p2y >= height)
+                                continue;
+
+                            double u1 = color[p1y][p1x];
+                            double u2 = color[p2y][p2x];
+                            double var1 = var[p1y][p1x];
+                            double var2 = var[p2y][p2x];
+
+                            double delta = (u1 - u2) * (u1 - u2);
+                            double var_corr = var1 + ((var1 < var2) ? var1 : var2);
+                            double norm = eps + kc * kc * (var1 + var2);
+
+                            d2 += (delta - var_corr) / norm;
+                        }
+                    }
+
+                    d2 = fmax(0.0, d2 / ((2*f + 1)*(2*f + 1)));
+
+                    double w = exp(-d2);
+                    total_weight += w;
+                    filtered_val += w * color[qy][qx];
+                }
+            }
+            out[j][i] = (total_weight > 0) ? filtered_val / total_weight : color[j][i];
+		}
+	}
+	free(color);
+	return (out);
+}
+
+
 void	run_and_reset(t_fractal *fractal, int buddha_min, int buddha_iters, char channel)
 {
 	double		num;
@@ -149,13 +250,20 @@ void	run_and_reset(t_fractal *fractal, int buddha_min, int buddha_iters, char ch
 		print_times(map_start, get_time(), "\0", "Map channel time  : %f seconds\n", MAGENTA);
 	}
 	run_start = get_time();
-	zero_matrix(fractal->densities[hist], fractal->width, fractal->height);
+	zero_matrix(fractal->densities[hist], fractal->width, fractal->height); //only because map uses first.
 	printf(MAGENTA"Running channel: "BLUE"%d ...\n"RESET, fractal->hist_num);
 	if (b->fast)
+	{
 		fast_buddha(fractal);//using monte carlo importance
+		if (fractal->buffs > 1)
+		{
+			combine_buff_set_var(fractal->densities, hist, fractal->buffs, fractal->width, fractal->height);//try smootherstep first..
+			fractal->densities[hist] = nlm_channel(fractal->densities[hist], fractal->densities[hist + 3], fractal->width, fractal->height);
+		}
+	}
 	else
 		buddha(fractal);//for using normal random sampling method
-	num = high_hit_count(fractal->width, fractal->height, fractal->densities[hist]);
+	num = high_hit_count(fractal->width, fractal->height, fractal->densities[hist]);//hist + 3 when viewing variances
 	if (channel == 'b')
 		b->high_b = num;
 	else if (channel == 'g')

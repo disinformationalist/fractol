@@ -185,6 +185,7 @@ typedef struct s_fractal
 	int				b_max_i;
 	int				histograms;
 	int				hist_num;
+	int				buffs;
 	//----------------end buddha stuff
 
 	int				size;
@@ -231,6 +232,7 @@ typedef struct s_comps
 	double	y_span;
 
 	double	**density;
+	double	**density2;
 	double	**pdf;
 
 	double	**subpdf;
@@ -240,6 +242,7 @@ typedef struct s_comps
 
 	double	step;
 	double	bound;
+	bool	flag;
 
 	f		complex_f;
 

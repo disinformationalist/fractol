@@ -94,8 +94,6 @@ static inline void	set_green(t_fractal *fractal, double num, double **density, t
 	else
 		n = 255.0 / numf(num, b.gpow);
 
-//	n = 255.0 / numf(log(num + 1), fractal->buddha->gpow);//make this method too
-
 	j = piece->y_s - 1;
 	while (++j < piece->y_e)
 	{
@@ -103,7 +101,6 @@ static inline void	set_green(t_fractal *fractal, double num, double **density, t
 		while (++i < piece->x_e)
 		{
 			factor = numf(density[j][i], b.gpow) * n;
-//			factor = numf(log(density[j][i] + 1), fractal->buddha->gpow) * n;
 
 			if (b.smootherstep)
 				color = ft_round(smootherstep(b.edge0_g, b.edge1_g, factor) * 255.0) << 8;

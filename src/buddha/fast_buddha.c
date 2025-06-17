@@ -1,5 +1,46 @@
 #include "fractol.h"
 
+void	orbit_tracker2(t_fractal *fractal, t_complex c, double weight, t_comps comps)
+{
+	t_complex	z;
+	int			x;
+	int			y;
+	int			iterations;
+
+	iterations = 0;
+	z.x = 0;
+	z.y = 0;
+	while (iterations < comps.b_max_i)
+	{
+		z = sum_complex(comps.complex_f(z), c);
+		iterations++;
+		y = ft_round(map_back_2((z.x - comps.move_x) * comps.zoom, comps.x_cmin, comps.slopex_back));
+		x = ft_round(map_back_2((z.y + comps.move_y) * comps.zoom, comps.y_cmin, comps.slopey_back));
+		if (x >= 0 && x < comps.width && y >= 0 && y < comps.height)
+			comps.density2[y][x] += weight;
+	}
+}
+
+void	buddha_iteration2(t_fractal *fractal, t_complex c, double weight, t_comps comps)
+{
+	t_complex	z;
+	int			iterations;
+	double		bound;
+
+	bound = fractal->bound;
+	iterations = 0;
+	z.x = 0.0;
+	z.y = 0.0;
+	while ((z.x * z.x) + (z.y * z.y) < bound && iterations < comps.b_max_i)
+	{
+		z = sum_complex(comps.complex_f(z), c);
+		iterations++;
+	}
+	if (iterations < comps.b_max_i && iterations > fractal->b_min_i)
+		orbit_tracker2(fractal, c, weight, comps);
+}
+
+
 int	ft_clamp(double val, int low, int high)
 {
 	if (val > high)
@@ -38,6 +79,9 @@ void	sample_pixel_grid(t_fractal *fractal, int x, int y, t_comps comps, Xoro128 
 	double 		sample_prob = comps.pdf[y][x];
 	int 		pix_samples = ft_round(comps.samples * sample_prob);
 	int 		limit = ft_round(sqrt(pix_samples));
+
+/* 	int			buffs = fractal->buffs; tough to adjust the grid for the mult buff method.. for nlm
+	int 		pix_samples = ft_round(comps.samples * sample_prob / buffs);//over 2 for 2 buff */
 	
 	if (sample_prob < 1e-8)
 	sample_prob = 1e-8;
@@ -170,26 +214,46 @@ void	sample_subpix(t_fractal *fractal, double **pixpdf, double pix_samps, double
 
 void	sample_pixel(t_fractal *fractal, int x, int y, t_comps comps, Xoro128 *rng)
 {
-	int 		i;
+	int 		i, k;
 	t_complex	c;
 	double 		sample_prob = comps.pdf[y][x];
-	int 		pix_samples = ft_round(comps.samples * sample_prob);
+	int			buffs = fractal->buffs;
+	int 		pix_samples = ft_round(comps.samples * sample_prob / buffs);
 
 	/* if (pix_samples == 0)
-		return ;
+	return ;
 	if (sample_prob < 1e-8)
-    	sample_prob = 1e-8;
- */
+	sample_prob = 1e-8;
+	*/
+	double		weight = 1.0 / sample_prob;
 	//if (pix_samples < 4)//try tiered sampling,  if  low < samples < high
+	k = -1;
+	while (++k < buffs)
 	{
-		double		weight = 1.0 / sample_prob;
 		i = -1;
+		comps.density = fractal->densities[comps.hist + 3 * k];
 		while (++i < pix_samples)
 		{
 			c.x = map_2((double)x + xoro128d(rng), comps.x_cmin, comps.slopex_to);// * comps.inv_zoom + comps.move_x;
 			c.y = map_2((double)y + xoro128d(rng), comps.y_cmin, comps.slopey_to);// * comps.inv_zoom - comps.move_y;
 			buddha_iteration(fractal, c, weight, comps);
 		}
+	/* 	i = -1;
+		comps.density = fractal->densities[comps.hist + 3];
+		while (++i < pix_samples)
+		{
+			c.x = map_2((double)x + xoro128d(rng), comps.x_cmin, comps.slopex_to);// * comps.inv_zoom + comps.move_x;
+			c.y = map_2((double)y + xoro128d(rng), comps.y_cmin, comps.slopey_to);// * comps.inv_zoom - comps.move_y;
+			buddha_iteration(fractal, c, weight, comps);
+		}
+		i = -1;
+		comps.density = fractal->densities[comps.hist + 6];
+		while (++i < pix_samples)
+		{
+			c.x = map_2((double)x + xoro128d(rng), comps.x_cmin, comps.slopex_to);// * comps.inv_zoom + comps.move_x;
+			c.y = map_2((double)y + xoro128d(rng), comps.y_cmin, comps.slopey_to);// * comps.inv_zoom - comps.move_y;
+			buddha_iteration(fractal, c, weight, comps);
+		} */
 	}
 	//else //subsamp--
 /* 	{
@@ -400,6 +464,8 @@ void	fast_buddha(t_fractal *fractal)
 	if (!fractal->move_y && fractal->buddha->copy_half)
 	{
 		copy_buddha_half_fast(fractal->densities[fractal->hist_num], fractal->height, fractal->width);
+		if (fractal->buffs > 1)
+			copy_buddha_half_fast(fractal->densities[fractal->hist_num + 3], fractal->height, fractal->width);//for variance
 		//copy_buddha_half_map(fractal->densities[fractal->hist_num], fractal->height, fractal->width);//FOR USE WITH X AND Y NOT SWAPPED.
 	}
 }

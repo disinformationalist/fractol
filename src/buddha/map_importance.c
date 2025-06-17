@@ -143,6 +143,7 @@ t_comps	set_comps(t_fractal *fractal, bool map)
 	comps.b_max_i = fractal->b_max_i;
 	comps.b_min_i = fractal->b_min_i;
 	comps.bound = fractal->bound;
+	comps.flag = 0;
 
 	return (comps);
 }
