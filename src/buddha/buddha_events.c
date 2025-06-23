@@ -67,56 +67,56 @@ void	change_powers_layer2(int keysym, t_buddha *b)
 		b->rpow -= .01;
 }
 
-void	change_powers(int keysym, t_buddha *b)
+void	change_powers(int keysym, t_buddha *b, double change)
 {
 	if (keysym == Q)
-		b->bpow += .05;
+		b->bpow += change;
 	else if (keysym == A)
-		b->bpow -= .05;
+		b->bpow -= change;
 	else if (keysym == W)
-		b->gpow += .05;
+		b->gpow += change;
 	else if (keysym == S)
-		b->gpow -= .05;
+		b->gpow -= change;
 	else if (keysym == E)
-		b->rpow += .05;	
+		b->rpow += change;	
 	else if (keysym == D)
-		b->rpow -= .05;
+		b->rpow -= change;
 	else
 		return ;
 }
 
-void	change_edges(int keysym, t_buddha *b)
+void	change_edges(int keysym, t_buddha *b, double change)
 {
 	if (keysym == U)
-		b->edge0_b += .05;
+		b->edge0_b += change;
 	else if (keysym == J)
-		b->edge0_b -= .05;
+		b->edge0_b -= change;
 	else if (keysym == I)
-		b->edge0_g += .05;
+		b->edge0_g += change;
 	else if (keysym == K)
-		b->edge0_g -= .05;
+		b->edge0_g -= change;
 	else if (keysym == O)
-		b->edge0_r += .05;	
+		b->edge0_r += change;	
 	else if (keysym == L)
-		b->edge0_r -= .05;
+		b->edge0_r -= change;
 	else
 		return ;
 }
 
-void	change_edges2(int keysym, t_buddha *b)
+void	change_edges2(int keysym, t_buddha *b, double change)
 {
 	if (keysym == U)
-		b->edge1_b += .05;
+		b->edge1_b += change;
 	else if (keysym == J)
-		b->edge1_b -= .05;
+		b->edge1_b -= change;
 	else if (keysym == I)
-		b->edge1_g += .05;
+		b->edge1_g += change;
 	else if (keysym == K)
-		b->edge1_g -= .05;
+		b->edge1_g -= change;
 	else if (keysym == O)
-		b->edge1_r += .05;	
+		b->edge1_r += change;	
 	else if (keysym == L)
-		b->edge1_r -= .05;
+		b->edge1_r -= change;
 	else
 		return ;
 }
@@ -130,17 +130,25 @@ void	change_filter(t_buddha *b)
 
 void buddha_handler(int keysym, t_fractal *fractal)
 {
-	t_buddha *b;
+	t_buddha	*b;
 
 	b = fractal->buddha;
 	if (!fractal->layer)
-		change_powers(keysym, b);
+		change_powers(keysym, b, .05);
 	else
 		change_powers_layer2(keysym, b);
+	if (keysym == ALT)
+	{
+		if (b->change == .05)
+			b->change = .01;
+		else
+			b->change = .05;
+		return ;
+	}
 	if (!fractal->layer)
-		change_edges(keysym, b);
+		change_edges(keysym, b, b->change);
 	else
-		change_edges2(keysym, b);
+		change_edges2(keysym, b, b->change);
 	if (keysym == Z || keysym == H)
 		change_flevel(keysym, b, fractal);
 	if (keysym == F)

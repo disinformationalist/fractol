@@ -124,9 +124,7 @@ void	set_channel(t_fractal *fractal, int buddha_min, int buddha_iters, char chan
 		fractal->hist_num = 2;
 }
 
-
-
-
+// set the average values for r g b buffers into densities[1, 2, 3], variances into densities[4, 5, 6]
 void	combine_buff_set_var(double ***densities, int hist, int buffs, int width, int height)
 {
 	int		j;
@@ -165,8 +163,8 @@ void	combine_buff_set_var(double ***densities, int hist, int buffs, int width, i
 
 double	**nlm_channel(double **color, double **var, int width, int height)
 {
-	int f = 2; //patch_rad;
-	int r = 10; //search_rad;
+	int f = 2; //patch_rad;//1 for buddha2, 2 for buddha 1
+	int r = 15; //search_rad;
 	double kc = 1.0;
 	double eps = 1e-8;
 	double **out;
@@ -220,7 +218,7 @@ double	**nlm_channel(double **color, double **var, int width, int height)
             out[j][i] = (total_weight > 0) ? filtered_val / total_weight : color[j][i];
 		}
 	}
-	free(color);
+	free_matrix_i(color, height);
 	return (out);
 }
 

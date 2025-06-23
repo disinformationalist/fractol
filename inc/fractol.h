@@ -131,6 +131,7 @@ typedef struct s_buddha
 
 	bool	fast;
 	bool	copy_half;
+	double	change;
 
 	void	*mlx_win_map;
 } t_buddha;
@@ -298,6 +299,10 @@ void		buddha_iter_fullmap(t_fractal *fractal, t_complex c, double slope_x, doubl
 void		buddha_iteration(t_fractal *fractal, t_complex c, double weight, t_comps comps);
 
 double		pow_ft(double num, double power);
+double		smootherstep(double edge0, double edge1, double x);
+double		clampf(double f);
+void		combine_buff_set_var(double ***densities, int hist, int buffs, int width, int height);
+
 
 //fast_buddha, sampling points all at once within pixel in accordance with importance
 //using half copying for symmetric and a work balanced multithread.

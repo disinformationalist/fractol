@@ -51,7 +51,7 @@ void	init_buddha(t_fractal *fractal)
 	b->flevel = 5;
 	b->ftype = MEAN;
 	b->mlx_win_map = NULL;
-
+	b->change = .05;
 
 	/* fractal->move_x = -0.0425;//.21//-x coord 
 	fractal->move_y = 0.9862;//-y coord
@@ -67,32 +67,46 @@ void	init_buddha(t_fractal *fractal)
 
 	b->fast = true;
 	b->copy_half = 0;//true;
-	b->n = 10;//can use doubles on these as well
+	b->n = 6;//can use doubles on these as well
 	b->map_n = b->n - 1;
 	type = b->type;
 	b->smootherstep = false;
 //.86,.93., .83   -.05, .7,.5,.55
 	if (type == BUDDHA1)
 	{
+		fractal->buffs = 3;
 		b->smootherstep = true;
 		if (b->smootherstep)
-			set_powers(b, .40, .35, .33);// bitter?
+			set_powers(b, .41, .39, .34);// bitter?
+			//set_powers(b, 1, 1, 1);
 			//set_powers(b, .43, .38, .35);
 		else
 			set_powers(b, 1, 1, 1);
-		set_edge_vals(b, .35, .35, .35, .65, .65, .65);
+		set_edge_vals(b, .31, .29, .29, .59, .61, .61);
+		//set_edge_vals(b, .35, .35, .35, .65, .65, .65);
+
 		set_vals(fractal, 0, 0, 0, 50, 500, 5000, &square_complex);
 			//set_vals(fractal, 0, 0, 0, 50, 300, 2750, &square_complex);
 	}
-	else if (type == BUDDHA2)//stormcloud buddha
+	else if (type == BUDDHA2)
 	{
-		set_powers(b, .5, .65, .6);//set_powers(b, .45, .7, .65);
-		set_edge_vals(b, .20, .0, .0, .55, .55, .6);
-		set_vals(fractal, 20, 55, 55, 350, 500, 3500, &square_complex);
-		//set_vals(fractal, 0, 0, 0, 350, 500, 3500, &square_complex);//.27.28.29, .3 - .7 edgev.
+		fractal->buffs = 3;
+		b->smootherstep = true;
+		if (b->smootherstep)
+		{
+			set_powers(b, .48, .58, .53);
+			set_vals(fractal, 0, 55, 55, 350, 500, 3500, &square_complex);
+		}
+		else
+		{
+			set_powers(b, .5, .65, .6);
+			set_vals(fractal, 20, 55, 55, 350, 500, 3500, &square_complex);
+		}
+		set_edge_vals(b, .15, .0, .0, .55, .50, .6);		
 	}
 	else if (type == LOTUS)
 	{
+		fractal->buffs = 1;
 		fractal->name = "Lotus";
 		set_powers(b, .5, .65, .65);
 		set_edge_vals(b, .05, .05, .05, .6, .6, .6);
@@ -100,6 +114,7 @@ void	init_buddha(t_fractal *fractal)
 	}
 	else// (type == PHEONIX)
 	{
+		fractal->buffs = 1;
 		fractal->name = "Pheonix";
 		set_powers(b, .45, .6, .5);
 		set_edge_vals(b, .05, .05, .05, .6, .6, .6);
@@ -107,12 +122,11 @@ void	init_buddha(t_fractal *fractal)
 		fractal->move_x = 0;
 		b->copy_half = false;
 	}
+	fractal->histograms = fractal->buffs * 3;
 }	
 
 void	info_init(t_fractal *fractal)
 {
-
-	fractal->buffs = 4;
 	fractal->bound = 4;
 	fractal->num_colors = 360;
 	fractal->max_i = 80;
@@ -131,7 +145,6 @@ void	info_init(t_fractal *fractal)
 	fractal->supersample = 0;
 	fractal->layer = 0;
 	fractal->s_kernel = 3;
-	fractal->histograms = fractal->buffs * 3;
 	fractal->species = 0;
 	fractal->aspect = (double)fractal->height_orig / (double)fractal->width_orig;
 	fractal->cdf = NULL;

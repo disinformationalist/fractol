@@ -226,49 +226,35 @@ void	sample_pixel(t_fractal *fractal, int x, int y, t_comps comps, Xoro128 *rng)
 	sample_prob = 1e-8;
 	*/
 	double		weight = 1.0 / sample_prob;
-	//if (pix_samples < 4)//try tiered sampling,  if  low < samples < high
 	k = -1;
 	while (++k < buffs)
 	{
 		i = -1;
 		comps.density = fractal->densities[comps.hist + 3 * k];
+		//if (pix_samples < 4)//try tiered sampling,  if  low < samples < high
 		while (++i < pix_samples)
 		{
 			c.x = map_2((double)x + xoro128d(rng), comps.x_cmin, comps.slopex_to);// * comps.inv_zoom + comps.move_x;
 			c.y = map_2((double)y + xoro128d(rng), comps.y_cmin, comps.slopey_to);// * comps.inv_zoom - comps.move_y;
+			/* c.x = map_2((double)x + xoro128d(rng), comps.x_cmin, comps.slopex_to) * comps.inv_zoom + comps.move_x;
+			c.y = map_2((double)y + xoro128d(rng), comps.y_cmin, comps.slopey_to) * comps.inv_zoom - comps.move_y; */
 			buddha_iteration(fractal, c, weight, comps);
 		}
-	/* 	i = -1;
-		comps.density = fractal->densities[comps.hist + 3];
-		while (++i < pix_samples)
-		{
-			c.x = map_2((double)x + xoro128d(rng), comps.x_cmin, comps.slopex_to);// * comps.inv_zoom + comps.move_x;
-			c.y = map_2((double)y + xoro128d(rng), comps.y_cmin, comps.slopey_to);// * comps.inv_zoom - comps.move_y;
-			buddha_iteration(fractal, c, weight, comps);
-		}
-		i = -1;
-		comps.density = fractal->densities[comps.hist + 6];
-		while (++i < pix_samples)
-		{
-			c.x = map_2((double)x + xoro128d(rng), comps.x_cmin, comps.slopex_to);// * comps.inv_zoom + comps.move_x;
-			c.y = map_2((double)y + xoro128d(rng), comps.y_cmin, comps.slopey_to);// * comps.inv_zoom - comps.move_y;
-			buddha_iteration(fractal, c, weight, comps);
-		} */
-	}
-	//else //subsamp--
-/* 	{
-		int a, b;
-		int dim = ft_round(sqrt(comps.zoom)) + 1;
-		double **subpdfv = map_sub_pixel(x, y, dim, comps);
-		b = 0;
-		for (b = 0; b < dim; b++)
-		{
-			a = 0;
-			for (a = 0; a < dim; a++)
+		//else //subsamp--
+		/* 	{
+			int a, b;
+			int dim = ft_round(sqrt(comps.zoom)) + 1;
+			double **subpdfv = map_sub_pixel(x, y, dim, comps);
+			b = 0;
+			for (b = 0; b < dim; b++)
+			{
+				a = 0;
+				for (a = 0; a < dim; a++)
 				sample_subpix(fractal, subpdfv, pix_samples, y, x, b, a, comps, rng, sample_prob, dim);				
-		}
-		free_matrix_i(subpdfv, dim);
-	} */
+				}
+				free_matrix_i(subpdfv, dim);
+				} */
+	}
 }
 
 
