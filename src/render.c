@@ -20,9 +20,8 @@ void	render_id(t_fractal *fractal)
 		julia(fractal);
 	else if (fractal->id == 3)
 	{
-		if (fractal->cdf)
-			free_matrices(fractal);
-		init_matricies(fractal);
+		if (buddha_ensure_workspace(fractal) != 0)
+			clear_all(fractal);
 		render_buddha(fractal);
 	}
 	else if (fractal->id == 4)
@@ -63,8 +62,13 @@ void	render(t_fractal *fractal)
 		free_ui_matrix(fractal->pixels_xl, fractal->height);
 		ft_putstr_color("SUPERSAMPLE COMPLETE\n", BOLD_BRIGHT_BLUE);
 	}
+	if (fractal->id == 3 && fractal->buddha->importance_enabled)
+	{
+		buddha_importance_store_render(fractal);
+		if (fractal->buddha->importance_view)
+			buddha_importance_draw(fractal);
+	}
 	if (fractal->toggle_color == 0)
 		fractal->col_i = (fractal->col_i + 7) % fractal->num_colors;
-	mlx_put_image_to_window(fractal->mlx_connect,
-		fractal->mlx_win, fractal->img.img_ptr, 0, 0);
+	display_fractal_image(fractal);
 }

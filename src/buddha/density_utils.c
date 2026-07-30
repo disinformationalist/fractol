@@ -11,43 +11,7 @@
 /* ************************************************************************** */
 
 #include "fractol.h"
-
-/* int	**calloc_int_matrix(int width, int height)
-{
-	int **matrix;
-	int i;
-
-	i = -1;
-	matrix = (int **)malloc(height * sizeof(int *));
-	if (!matrix)
-		return (NULL);
-	while (++i < height)
-	{
-		matrix[i] = (int *)malloc(width * sizeof(int));
-		if (!matrix[i])
-		{
-			while(--i >= 0)
-				free(matrix[i]);
-			free(matrix);
-			return (NULL);
-		}
-	}
-	return (matrix);
-} */
-
-void	zero_int_matrix(int **matrix, int width, int height)
-{
-	int j;
-	int i;
-	
-	j = -1;
-	while (++j < height)
-	{
-		i = -1;
-		while (++i < width)
-			matrix[j][i] = 0;
-	}
-}
+#include <limits.h>
 
 void	zero_matrix(double **matrix, int width, int height)
 {
@@ -71,92 +35,85 @@ void	free_3d_array_i(double ***array3d, int k, int height)
 	array3d = NULL;
 }
 
-void	init_matricies(t_fractal *fractal)
+static bool	workspace_matches(t_fractal *fractal)
 {
-	int	k;
-	int histograms = fractal->histograms;
+	return (fractal->sample_counts && fractal->densities
+		&& fractal->worker_histograms
+		&& fractal->buddha_workspace_width == fractal->width
+		&& fractal->buddha_workspace_height == fractal->height
+		&& fractal->buddha_workspace_histograms == fractal->histograms
+		&& fractal->buddha_workspace_workers
+		== fractal->num_rows * fractal->num_cols);
+}
 
-	fractal->cdf = (double *)malloc(fractal->size * sizeof(double));
-	if (!fractal->cdf)
-		clear_all(fractal);
-	fractal->densities = (double ***)malloc(histograms * sizeof(double **));
+static void	free_partial_densities(t_fractal *fractal, int count)
+{
+	while (--count >= 0)
+		free_matrix_i(fractal->densities[count], fractal->height);
+	free(fractal->densities);
+	fractal->densities = NULL;
+}
+
+int	buddha_ensure_workspace(t_fractal *fractal)
+{
+	size_t	sample_budget;
+	size_t	pixels;
+	int	k;
+
+	pixels = (size_t)fractal->width * (size_t)fractal->height;
+	if (pixels > INT_MAX)
+		return (fprintf(stderr,
+				"Buddha workspace exceeds the supported pixel count\n"), -1);
+	fractal->size = (int)pixels;
+	sample_budget = buddha_sample_budget(fractal);
+	if (sample_budget == SIZE_MAX || sample_budget > UINT32_MAX)
+		return (fprintf(stderr,
+				"Buddha per-buffer sample budget exceeds uint32 capacity\n"),
+			-1);
+	if (workspace_matches(fractal))
+		return (0);
+	if (fractal->sample_counts || fractal->densities
+		|| fractal->worker_histograms)
+		free_matrices(fractal);
+	fractal->densities = (double ***)calloc(fractal->histograms,
+			sizeof(double **));
 	if (!fractal->densities)
-	{
-		free (fractal->cdf);
-		clear_all(fractal);
-	}
+		return (-1);
 	k = -1;
-	while (++k < histograms)
+	while (++k < fractal->histograms)
 	{
 		fractal->densities[k] = malloc_matrix(fractal->width, fractal->height);
 		if (!fractal->densities[k])
 		{
-			free_3d_array_i(fractal->densities, k, fractal->height);
-			clear_all(fractal);
+			free_partial_densities(fractal, k);
+			return (-1);
 		}
 		zero_matrix(fractal->densities[k], fractal->width, fractal->height);
 	}
-	/* fractal->density = malloc_matrix(fractal->width, fractal->height);
-	if (!fractal->density)
-		clear_all(fractal); */
-	fractal->pdf = malloc_matrix(fractal->width, fractal->height);//pro
-	if (!fractal->pdf)
+	fractal->sample_counts = (uint32_t *)calloc(pixels,
+			sizeof(*fractal->sample_counts));
+	if (!fractal->sample_counts)
+	{
+		free_partial_densities(fractal, fractal->histograms);
+		return (-1);
+	}
+	if (buddha_init_worker_histograms(fractal) != 0)
+	{
+		free(fractal->sample_counts);
+		fractal->sample_counts = NULL;
+		free_partial_densities(fractal, fractal->histograms);
+		return (-1);
+	}
+	fractal->buddha_workspace_width = fractal->width;
+	fractal->buddha_workspace_height = fractal->height;
+	fractal->buddha_workspace_histograms = fractal->histograms;
+	fractal->buddha_workspace_workers
+		= fractal->num_rows * fractal->num_cols;
+	return (0);
+}
+
+void	init_matricies(t_fractal *fractal)
+{
+	if (buddha_ensure_workspace(fractal) != 0)
 		clear_all(fractal);
 }
-
-void	zero_densities(t_fractal *fractal)
-{
-	int k;
-
-	k = -1;
-	while (++k < fractal->histograms)
-		zero_matrix(fractal->densities[k], fractal->width, fractal->height);
-}
-
-
-
-
-/* void	init_density(t_fractal *fractal)
-{
-	int	i;
-
-	fractal->density = (int **)malloc(fractal->height * sizeof(int *));
-	if (fractal->density == NULL)
-		clear_all(fractal);
-	i = -1;
-	while (++i < fractal->height)
-	{
-		fractal->density[i] = (int *)malloc(fractal->width * sizeof(int));
-		if (fractal->density[i] == NULL)
-		{
-			free_density(fractal, i);
-			clear_all(fractal);
-		}
-	}
-	zero_density(fractal);
-}
-
-void	zero_density(t_fractal *fractal)
-{
-	int	i;
-	int	j;
-
-	j = -1;
-	while (++j < fractal->height)
-	{
-		i = -1;
-		while (++i < fractal->width)
-			fractal->density[j][i] = 0;
-	}
-}
-
-void	free_density(t_fractal *fractal, int j)
-{
-	while (--j >= 0)
-	{
-		free (fractal->density[j]);
-		fractal->density[j] = NULL;
-	}
-	free(fractal->density);
-	fractal->density = NULL;
-} */

@@ -81,8 +81,6 @@ int	supersample_handle(int keysym, t_fractal *fractal)
 {
 	if (keysym == SPACE)
 	{
-		if (fractal->id == 3)
-			free_matrices(fractal);
 		if (fractal->id == 4)
 			free_fdensity(fractal, fractal->height);
 		if (fractal->supersample)
@@ -96,8 +94,6 @@ int	supersample_handle(int keysym, t_fractal *fractal)
 			fractal->height *= fractal->s_kernel;
 		}
 		fractal->supersample = !fractal->supersample;
-		if (fractal->id == 3)
-			init_matricies(fractal);
 		if (fractal->id == 4)
 			init_fdensity(fractal);
 	}
@@ -198,30 +194,45 @@ int	key_handler_2layer(int keysym, t_fractal *fractal)
 	return (0);
 }
 
-//export the current img to png and save in root directory
+static char	*export_name(t_fractal *fractal)
+{
+	if (fractal->id == 1)
+		return (get_nxt_name("mandelbrot_"));
+	if (fractal->id == 2)
+		return (get_nxt_name("julia_"));
+	if (fractal->id == 3)
+		return (get_nxt_name("buddha_"));
+	if (fractal->id == 4)
+		return (get_nxt_name("fern_"));
+	return (NULL);
+}
 
 void	export(int keysym, t_fractal *fractal)
 {
-	char		*name = NULL;
+	char		*name;
 	png_text	*text;
 
-	if (fractal->id == 1)
-		name = get_nxt_name("mandelbrot_");
-	else if (fractal->id == 2)
-		name = get_nxt_name("julia_");
-	else if (fractal->id == 3)
-		name = get_nxt_name("buddha_");
-	else if (fractal->id == 4)
-		name = get_nxt_name("fern_");
+	(void)keysym;
+	name = export_name(fractal);
 	if (!name)
 		close_handler(fractal);
-	//text = build_fractal_text(fractal); //todo, ft to store data in image to open at the same settings
-	text = NULL;//temp until function is done;
-	if (export_png(name, &fractal->img, fractal->width_orig, fractal->height_orig, text) == -1)
-		close_handler(fractal);
-	ft_putstr_color("EXPORT COMPLETE\n", BOLD_BRIGHT_BLUE);
-	if (name)
+	text = build_fractal_text(fractal);
+	if (!text)
+	{
+		fprintf(stderr, "Export metadata allocation failed\n");
 		free(name);
+		return ;
+	}
+	printf("16-bit RGB export in progress...\n");
+	fflush(stdout);
+	if (export_png16(name, fractal, text) == -1)
+	{
+		free(name);
+		close_handler(fractal);
+	}
+	printf(BOLD_BRIGHT_MAGENTA"EXPORT "BOLD_GREEN"%s"
+		BOLD_BRIGHT_MAGENTA" COMPLETE (16-bit RGB)\n"RESET, name);
+	free(name);
 }
 
 int	key_handler(int keysym, t_fractal *fractal)
@@ -301,6 +312,7 @@ void	mouse_handler_2(int button, int x, int y, t_fractal *fractal)
 
 int	mouse_handler(int button, int x, int y, t_fractal *fractal)
 {	
+	display_to_render_coordinates(fractal, &x, &y);
 	if (fractal->supersample)
 	{
 		x *= fractal->s_kernel;

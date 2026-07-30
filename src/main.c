@@ -16,7 +16,7 @@ void	set_type(t_fractal *f, int n)
 {
 	if (n < 0 || n > 3)
 	{
-		putstr_fd("Buddha syntax: ./fractal buddha <width> <height> <type>\n", STDERR_FILENO);
+		print_buddha_usage(STDERR_FILENO);
 		putstr_fd("type must be a 0, 1, 2, or 3\n\n", STDERR_FILENO);
 		putstr_fd("0: standard buddha\n", STDERR_FILENO);
 		putstr_fd("1: another version of buddha with custom settings\n", STDERR_FILENO);
@@ -37,13 +37,8 @@ void	check_width_height(t_fractal *frac)
 	}
 	else if (frac->height < 10 || frac->height > 10000)
 	{
-		putstr_fd("Width must be greater than 10 and less than 10000\n", STDERR_FILENO);
-		exit(EXIT_FAILURE);
-	}
-	if (frac->id == 3 && frac->width != frac->height)
-	{
-		putstr_fd("Width and height must be equal for buddhabrot\n", STDERR_FILENO);
-		free(frac->buddha);
+		putstr_fd("Height must be greater than 10 and less than 10000\n",
+			STDERR_FILENO);
 		exit(EXIT_FAILURE);
 	}
 }
@@ -62,10 +57,10 @@ void	check_and_set_id(t_fractal *fractal, int ac, char **av)
 		fractal->height = ft_atoi(av[5]);
 		fractal->id = 2;	
 	}
-	else if (ac == 5 && !ft_strncmp(av[1], "buddha", 6))
+	else if (ac >= 5 && !ft_strncmp(av[1], "buddha", 6))
 	{
 		fractal->id = 3;
-		fractal->buddha = (t_buddha *)malloc(sizeof(t_buddha));
+		fractal->buddha = (t_buddha *)calloc(1, sizeof(t_buddha));
 		if (!fractal->buddha)
 		{
 			printf("Error: Buddha Malloc failed\n");
@@ -73,6 +68,12 @@ void	check_and_set_id(t_fractal *fractal, int ac, char **av)
 		}
 		n = ft_atoi(av[4]);
 		set_type(fractal, n);
+		if (parse_buddha_options(fractal->buddha, ac - 5, av + 5) != 0)
+		{
+			print_buddha_usage(STDERR_FILENO);
+			free(fractal->buddha);
+			exit(EXIT_FAILURE);
+		}
 	}
 	else if (ac == 4 && !ft_strncmp(av[1], "fern", 4))
 		fractal->id = 4;
@@ -97,7 +98,7 @@ int	main(int ac, char **av)
 {
 	t_fractal	fractal;
 	
-	fractal.buddha = NULL;
+	memset(&fractal, 0, sizeof(fractal));
 	check_and_set_id(&fractal, ac, av);
 	fractal.num_cols = 1;
 	fractal.num_rows = get_num_cores();

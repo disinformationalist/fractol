@@ -76,7 +76,7 @@ static int	init_import(t_png_io **png_img, t_img **image, const char *file)
 	*png_img = (t_png_io *)malloc(sizeof(t_png_io));
 	if (!(*png_img))
 		return (1);
-	init_vars(*png_img);
+	init_vars(*png_img, RGBA);
 	if (init_png_structs_in(*png_img, file) == -1)
 		return (1);
 	if (setjmp(png_jmpbuf((*png_img)->png_ptr)))

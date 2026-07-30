@@ -11,6 +11,9 @@
 # **************************************************************************** #
 
 NAME := fractol
+TEST_DIR := ./tests
+BUDDHA_TEST := $(TEST_DIR)/buddha_regression
+BUDDHA_TEST_DEP := $(BUDDHA_TEST).d
 
 SRC_DIR = ./src
 OBJ_DIR = ./obj
@@ -37,10 +40,8 @@ $(SRC_DIR)/complex_ops.c \
 $(SRC_DIR)/print_guides.c \
 $(SRC_DIR)/buddha/buddha_events.c \
 $(SRC_DIR)/buddha/buddhabrot.c \
-$(SRC_DIR)/buddha/complex_ops_simd.c \
 $(SRC_DIR)/buddha/density_utils.c \
 $(SRC_DIR)/buddha/fast_buddha.c \
-$(SRC_DIR)/buddha/fullmap_importance.c \
 $(SRC_DIR)/buddha/map_importance.c \
 $(SRC_DIR)/buddha/render_buddha.c \
 $(SRC_DIR)/buddha/set_buddha_colors.c \
@@ -53,13 +54,15 @@ SRCS = $(wildcard $(SRC_DIR)/*.c) $(wildcard $(SRC_DIR)/*/*.c)
 
 #CFLAGS := -Wall -Wextra -Werror -I$(INC_DIR) -O2 -march=native -w
 CFLAGS := -Wall -Wextra -Werror -I$(INC_DIR) -g -O2 -mavx -mavx2 -march=native -Wno-unused-parameter -Wunused-result 
-CFLAGS += -Wno-unused-result -Wno-unused-variable -Wno-unused-function
+CFLAGS += -Wno-unused-result -Wno-unused-variable -Wno-unused-function -MMD -MP
 CC := cc
 
 
 
 #OBS := $(SRCS:.c=.o)
 OBS = $(SRCS:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
+CORE_OBS = $(filter-out $(OBJ_DIR)/main.o,$(OBS))
+DEPS = $(OBS:.o=.d)
 
 
 IMG_PATH = image_processing
@@ -90,14 +93,34 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
 $(IMG_ARCH):
 	$(MAKE) -C $(IMG_PATH)
 
+$(BUDDHA_TEST): $(CORE_OBS) $(TEST_DIR)/buddha_regression.c $(IMG_ARCH)
+	$(CC) $(CFLAGS) $(TEST_DIR)/buddha_regression.c $(CORE_OBS) \
+		-L$(IMG_PATH) -limage_processing -lm -Lminilibx-linux \
+		-lmlx_Linux -lX11 -lXext -lpng -o $@
+
+test-buddha: $(BUDDHA_TEST)
+	$(BUDDHA_TEST)
+
+reference-buddha: $(BUDDHA_TEST)
+	$(BUDDHA_TEST) --print-reference
+
+benchmark-buddha: $(BUDDHA_TEST)
+	$(BUDDHA_TEST) --benchmark
+
+benchmark-buddha-nlm: $(BUDDHA_TEST)
+	$(BUDDHA_TEST) --benchmark-nlm
+
 clean:
-	rm -rf $(OBS)
+	rm -rf $(OBS) $(DEPS) $(BUDDHA_TEST_DEP)
 	cd image_processing && make clean
 
 fclean: clean
-	rm -rf $(NAME)
+	rm -rf $(NAME) $(BUDDHA_TEST)
 	cd image_processing && make fclean
 	
 re: fclean all
 
-.PHONY: all clean fclean re chaos
+.PHONY: all clean fclean re chaos test-buddha reference-buddha \
+	benchmark-buddha benchmark-buddha-nlm
+
+-include $(DEPS) $(BUDDHA_TEST_DEP)

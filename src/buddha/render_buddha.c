@@ -1,288 +1,183 @@
 #include "fractol.h"
 
-void	put_pixel2(int x, int y, t_fractal *fractal, unsigned int color)
+static t_buddha_channel	channel_plan(t_buddha *b, int histogram)
 {
-	if (fractal->hist_num == 1)
-		color = color << 8;
-	else if (fractal->hist_num == 2)
-		color = color << 16;
-
-	if (!fractal->supersample)
-	{
-		//my_pixel_put(x, y, &fractal->img_2, color);
-		my_pixel_put_plus(x, y, &fractal->img_2, color);
-	}
-	else
-		fractal->pixels_xl[y][x] = color;
+	if (histogram == 0)
+		return ((t_buddha_channel){0, b->min1, b->max1});
+	if (histogram == 1)
+		return ((t_buddha_channel){1, b->min2, b->max2});
+	return ((t_buddha_channel){2, b->min3, b->max3});
 }
 
-double	high_hit_count(int width, int height, double **density)
+static void	apply_channel(t_fractal *fractal, t_buddha_channel channel)
 {
-	int		i;
-	int		j;
-	double	high;
-
-	j = -1;
-	high = 0.0;
-	while (++j < height)
-	{
-		i = -1;
-		while (++i < width)
-		{
-			if (high < density[j][i])
-				high = density[j][i];
-		}
-	}
-	return ((high));
+	fractal->hist_num = channel.histogram;
+	fractal->b_min_i = channel.min_iter;
+	fractal->b_max_i = channel.max_iter;
 }
 
-void create_cdf(t_fractal *fractal, double **pdf)
+static void	print_channel_time(char *label, long start)
 {
-	int		width = fractal->width;
-	int		height = fractal->height;
-	int		size = width * height;
-	double	*cdf = fractal->cdf;
-	double	cumulative_sum = 0.0;
-    int		index = 0;
-    
-	for (int j = 0; j < height; j++)
-	{
-        for (int i = 0; i < width; i++)
-		{
-            cumulative_sum += pdf[j][i];
-            cdf[index] = cumulative_sum;
-            index++;
-        }
-    }
-    // Normalize the CDF so that the last element is exactly 1.0
-	double norm_factor =  1.0 / cumulative_sum;
-	for (int k = 0; k < size; k++)
-      cdf[k] *= norm_factor;
+	printf(MAGENTA"%s: %f seconds\n"RESET, label,
+		(double)(get_time() - start) / 1000.0);
 }
 
-void	show_map(t_fractal *fractal, double **density)
+static void	build_channel_importance(t_fractal *fractal,
+		t_buddha_channel channel, bool map_ready)
 {
-	int i, j;
-	double	importance;
-    double	*density_row;
-	int high_density = high_hit_count(fractal->width, fractal->height, density);
-	j = -1;
-	while (++j < fractal->height)
-	{
-		i = -1;
-		density_row = density[j];
-		while (++i < fractal->width)
-		{
-			importance = fmin(255, density_row[i] * 10 / (double)high_density);
-			put_pixel2(j, i, fractal, (importance * 255.0));		
-		}
-	}
-	fractal->buddha->mlx_win_map = mlx_new_window(fractal->mlx_connect, fractal->width, \
-		fractal->height, "Importance map");
-	if (fractal->mlx_win == NULL)
-		clear_all(fractal);
-	mlx_put_image_to_window(fractal->mlx_connect,
-		fractal->buddha->mlx_win_map, fractal->img_2.img_ptr, 0, 0);
-}
-
-void	build_importance_map(t_fractal *fractal, double **density)
-{
-	int		i;
-	int		j;
-	double	sum;
-	double 	norm_factor;
-	double	**pdf = fractal->pdf;
-    double	*densities_row;
-	double	prob;
-	
-	sum = get_matrix_sum(density, fractal->width, fractal->height);
-	norm_factor = 1.0 / sum;
-	j = -1;
-	while (++j < fractal->height)
-	{
-		i = -1;
-		densities_row = density[j];
-		while (++i < fractal->width)
-		{
-			prob = (densities_row[i] * norm_factor);
-			pdf[j][i] = prob;
-		}
-	}
-	create_cdf(fractal, fractal->pdf);
-}
-
-void	set_channel(t_fractal *fractal, int buddha_min, int buddha_iters, char channel)
-{
-	fractal->b_min_i = buddha_min;
-	fractal->b_max_i = buddha_iters;
-	
-	if (channel == 'b')
-		fractal->hist_num = 0;
-	else if (channel == 'g')
-		fractal->hist_num = 1;
-	else if (channel == 'r')
-		fractal->hist_num = 2;
-}
-
-// set the average values for r g b buffers into densities[1, 2, 3], variances into densities[4, 5, 6]
-void	combine_buff_set_var(double ***densities, int hist, int buffs, int width, int height)
-{
-	int		j;
-	int		i;
-	int		k;
-	double	avg;
-	double	var;
-	double	sum;
-
-		j = -1;
-		while (++j < height)
-		{
-			i = -1;
-			while (++i < width)
-			{
-				k = -1;
-				sum = 0;
-				//get avg
-				while (++k < buffs)
-					sum += densities[hist + k * 3][j][i];
-				avg = sum / buffs;
-				k = -1;
-				sum = 0;
-				//get var
-				while (++k < buffs)
-				{
-					double v1 = avg - densities[hist + k * 3][j][i];
-					sum += v1 * v1;
-				}
-				var = sum / buffs;
-				densities[hist][j][i] = avg;
-				densities[hist + 3][j][i] = var;
-			}
-		}
-}
-
-double	**nlm_channel(double **color, double **var, int width, int height)
-{
-	int f = 2; //patch_rad;//1 for buddha2, 2 for buddha 1
-	int r = 15; //search_rad;
-	double kc = 1.0;
-	double eps = 1e-8;
-	double **out;
-
-	out = malloc_matrix(width, height);
-	for (int j = 0; j < height; j++)
-	{
-		for (int i = 0; i < width; i++)
-		{
-			double total_weight = 0.0;
-			double filtered_val = 0.0;
-			  for (int dy = -r; dy <= r; dy++) {
-                for (int dx = -r; dx <= r; dx++) {
-                    int qx = i + dx;
-                    int qy = j + dy;
-
-                    if (qx < 0 || qx >= width || qy < 0 || qy >= height)
-                        continue;
-
-                    double d2 = 0.0;
-
-                    for (int py = -f; py <= f; py++) {
-                        for (int px = -f; px <= f; px++) {
-                            int p1x = i + px, p1y = j + py;
-                            int p2x = qx + px, p2y = qy + py;
-
-                            if (p1x < 0 || p1x >= width || p1y < 0 || p1y >= height ||
-                                p2x < 0 || p2x >= width || p2y < 0 || p2y >= height)
-                                continue;
-
-                            double u1 = color[p1y][p1x];
-                            double u2 = color[p2y][p2x];
-                            double var1 = var[p1y][p1x];
-                            double var2 = var[p2y][p2x];
-
-                            double delta = (u1 - u2) * (u1 - u2);
-                            double var_corr = var1 + ((var1 < var2) ? var1 : var2);
-                            double norm = eps + kc * kc * (var1 + var2);
-
-                            d2 += (delta - var_corr) / norm;
-                        }
-                    }
-
-                    d2 = fmax(0.0, d2 / ((2*f + 1)*(2*f + 1)));
-
-                    double w = exp(-d2);
-                    total_weight += w;
-                    filtered_val += w * color[qy][qx];
-                }
-            }
-            out[j][i] = (total_weight > 0) ? filtered_val / total_weight : color[j][i];
-		}
-	}
-	free_matrix_i(color, height);
-	return (out);
-}
-
-
-void	run_and_reset(t_fractal *fractal, int buddha_min, int buddha_iters, char channel)
-{
-	double		num;
-	long		start;
-	int			hist;
-	long		map_start;
-	long		run_start; 
-	t_buddha	*b;
-
-	if (buddha_iters <= 0)
+	if (!fractal->buddha->fast)
 		return ;
-	b = fractal->buddha;
-	start = get_time();
-	set_channel(fractal, buddha_min, buddha_iters, channel);
-	hist = fractal->hist_num;
-	map_start = get_time();
-	if (b->fast)
+	if (!map_ready)
 	{
-		printf(MAGENTA"Mapping channel: "BLUE"%d ...\n"RESET, hist);
+		zero_matrix(fractal->densities[channel.histogram],
+			fractal->width, fractal->height);
+		printf(MAGENTA"Mapping channel: "BLUE"%d ...\n"RESET,
+			channel.histogram);
 		buddha_map(fractal);
-		build_importance_map(fractal, fractal->densities[hist]);
-		//show_map(fractal, fractal->densities[fractal->hist_num]);//for diagnostics
-		print_times(map_start, get_time(), "\0", "Map channel time  : %f seconds\n", MAGENTA);
+		buddha_importance_capture(fractal, channel.histogram);
 	}
-	run_start = get_time();
-	zero_matrix(fractal->densities[hist], fractal->width, fractal->height); //only because map uses first.
-	printf(MAGENTA"Running channel: "BLUE"%d ...\n"RESET, fractal->hist_num);
-	if (b->fast)
+	build_importance_map(fractal, fractal->densities[channel.histogram]);
+}
+
+static void	sample_channel(t_fractal *fractal, t_buddha_channel channel)
+{
+	zero_matrix(fractal->densities[channel.histogram],
+		fractal->width, fractal->height);
+	if (fractal->buddha->fast)
+		fast_buddha(fractal);
+	else
+		buddha(fractal);
+}
+
+static void	finalize_channel_buffers(t_fractal *fractal,
+		t_buddha_channel channel)
+{
+	if (fractal->buffs > 1)
+		combine_buff_set_var(fractal->densities, channel.histogram,
+			fractal->buffs, fractal->width, fractal->height);
+}
+
+static void	render_channel(t_fractal *fractal, t_buddha_channel channel,
+		bool map_ready)
+{
+	long	start;
+	long	phase_start;
+
+	if (channel.max_iter <= 0)
+		return ;
+	start = get_time();
+	apply_channel(fractal, channel);
+	phase_start = get_time();
+	build_channel_importance(fractal, channel, map_ready);
+	if (fractal->buddha->fast && !map_ready)
+		print_channel_time("Map channel time  ", phase_start);
+	phase_start = get_time();
+	printf(MAGENTA"Running channel: "BLUE"%d ...\n"RESET,
+		channel.histogram);
+	sample_channel(fractal, channel);
+	print_channel_time("Run channel time  ", phase_start);
+	phase_start = get_time();
+	finalize_channel_buffers(fractal, channel);
+	buddha_profile_phase("buffer statistics", phase_start);
+	if (fractal->buffs <= 1)
 	{
-		fast_buddha(fractal);//using monte carlo importance
-		if (fractal->buffs > 1)
-		{
-			combine_buff_set_var(fractal->densities, hist, fractal->buffs, fractal->width, fractal->height);//try smootherstep first..
-			fractal->densities[hist] = nlm_channel(fractal->densities[hist], fractal->densities[hist + 3], fractal->width, fractal->height);
-		}
+		phase_start = get_time();
+		buddha_set_channel_statistics(fractal, channel.histogram);
+		buddha_profile_density(fractal, channel.histogram);
+		buddha_profile_phase("tone statistics", phase_start);
 	}
-	else
-		buddha(fractal);//for using normal random sampling method
-	num = high_hit_count(fractal->width, fractal->height, fractal->densities[hist]);//hist + 3 when viewing variances
-	if (channel == 'b')
-		b->high_b = num;
-	else if (channel == 'g')
-		b->high_g = num;
-	else
-		b->high_r = num;
-	print_times(run_start, get_time(), "\0", "Run channel time  : %f seconds\n", MAGENTA);
-	printf(MAGENTA"Channel: "BLUE"%d Complete\n"RESET, fractal->hist_num);
-	print_times(start, get_time(), "\0", "Total channel time: %f seconds\n\n", MAGENTA);
+	printf(MAGENTA"Channel: "BLUE"%d Complete\n"RESET, channel.histogram);
+	print_channel_time("Total channel time", start);
+	printf("\n");
+}
+
+void	buddha_render_channel(t_fractal *fractal, int min_iter,
+		int max_iter, int histogram)
+{
+	if (histogram == 0)
+		buddha_nlm_reset(fractal);
+	render_channel(fractal,
+		(t_buddha_channel){histogram, min_iter, max_iter}, false);
+}
+
+static void	build_all_importance_maps(t_fractal *fractal)
+{
+	long	start;
+	int		channel;
+
+	if (!fractal->buddha->fast)
+		return ;
+	start = get_time();
+	printf(MAGENTA"Mapping all channels "
+		"(scale "BLUE"%d"RESET MAGENTA") ...\n"RESET,
+		buddha_map_scale(fractal));
+	channel = -1;
+	while (++channel < 3)
+		zero_matrix(fractal->densities[channel],
+			fractal->width, fractal->height);
+	buddha_map_all(fractal);
+	channel = -1;
+	while (++channel < 3)
+		buddha_importance_capture(fractal, channel);
+	print_channel_time("All-channel map time", start);
+}
+
+static void	finalize_multibuffer(t_fractal *fractal)
+{
+	long	start;
+	int		histogram;
+
+	start = get_time();
+	if (fractal->buddha->nlm_enabled && buddha_nlm(fractal) != 0)
+		fprintf(stderr,
+			"Buddha NLM skipped: workspace or temporary allocation failed\n");
+	buddha_profile_phase("nlm", start);
+	histogram = -1;
+	while (++histogram < 3)
+	{
+		buddha_set_channel_statistics(fractal, histogram);
+		buddha_profile_density(fractal, histogram);
+	}
 }
 
 void	render_buddha(t_fractal *fractal)
-{	
-	long start = get_time();
-	
-	//compute  histos for each channel, save in 3d array fractal->densities
-	run_and_reset(fractal, fractal->buddha->min1, fractal->buddha->max1, 'b');//letter swaps work
-	run_and_reset(fractal, fractal->buddha->min2, fractal->buddha->max2, 'g');
-	run_and_reset(fractal, fractal->buddha->min3, fractal->buddha->max3, 'r');
-	color_buddha(fractal);
-	print_times(start, get_time(), "RENDER COMPLETE\n", "Total render time : "GREEN"%f"RESET" seconds\n", BOLD_BLUE);
-}
+{
+	long	start;
+	int		histogram;
 
-	
+	start = get_time();
+	if (buddha_profile_enabled())
+		printf("[buddha] orbit=%s cache=%s<=%d interior=%s map=%s "
+			"configured=%d effective=%d metric=%s buffers=%d "
+			"samples-per-cell=%.3f allocation=flat-u32:%.2fMiB\n",
+			(char *[2]){"generic", "square-specialized"}
+			[fractal->buddha->square_specialized
+				&& fractal->complex_f == &square_complex],
+			(char *[2]){"off", "short-channel"}
+			[fractal->buddha->orbit_cache],
+			BUDDHA_ORBIT_CACHE_POINTS,
+			(char *[2]){"off", "analytic"}
+			[fractal->buddha->interior_rejection],
+			(char *[2]){"fixed", "adaptive"}
+			[fractal->buddha->map_adaptive],
+			ft_round(fractal->buddha->map_n), buddha_map_scale(fractal),
+			(char *[2]){"mean", "rms"}[fractal->buddha->importance_rms],
+			fractal->buffs, fractal->buddha->n * fractal->buddha->n,
+			(double)fractal->size * sizeof(*fractal->sample_counts)
+			/ (1024.0 * 1024.0));
+	buddha_nlm_reset(fractal);
+	buddha_importance_begin(fractal);
+	build_all_importance_maps(fractal);
+	histogram = -1;
+	while (++histogram < 3)
+		render_channel(fractal,
+			channel_plan(fractal->buddha, histogram),
+			fractal->buddha->fast);
+	if (fractal->buffs > 1)
+		finalize_multibuffer(fractal);
+	if (fractal->buddha->normalization == BUDDHA_NORM_LINKED_PERCENTILE)
+		buddha_update_white_points(fractal);
+	color_buddha(fractal);
+	print_times(start, get_time(), "RENDER COMPLETE\n",
+		"Total render time : "GREEN"%f"RESET" seconds\n", BOLD_BLUE);
+}

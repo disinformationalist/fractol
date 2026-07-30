@@ -4,7 +4,7 @@ SRC_DIR = ./src
 OBJ_DIR = ./obj
 INC_DIR = ./inc
 
-SRCS := ./src/mean_convo_filter.c ./src/gaussian_convo_filter.c ./src/my_pixel_puts.c ./src/gamma_correction.c \
+SRCS := ./src/gaussian_convo_filter.c ./src/my_pixel_puts.c ./src/gamma_correction.c \
 ./src/import_export/export_png.c ./src/import_export/export_png_utils.c ./src/sample.c ./src/create_img.c ./src/adjust_pixels_rgb.c \
 ./src/import_export/import_png.c ./src/import_export/import_png_utils.c ./src/padding/pad_borders.c ./src/sobel.c ./src/convolution_utils.c \
 ./src/padding/pad_mirror.c ./src/printing_utils.c ./src/padding/pad_mirror_kernel.c ./src/matrix_utils.c \

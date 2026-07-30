@@ -1,187 +1,341 @@
 #include "fractol.h"
 
-void	track_importance(t_fractal *fractal, t_complex c, t_comps comps, double n, double m)
+int	buddha_map_scale(t_fractal *fractal)
 {
-	t_complex	z;
-	int			x;
-	int			y;
-	int			iterations;
-	double		count_hits;
-	int			i;
-	int			j;
+	int	configured;
+	int	effective;
+	int	max_dimension;
 
-	iterations = 0;
-	count_hits = 0;
-	z.x = 0;
-	z.y = 0;
-	while (iterations < comps.b_max_i)
-	{
-		z = sum_complex(comps.complex_f(z), c);
-		iterations++;
-		x = ft_round(map_back_2((z.x - comps.move_x) * comps.zoom, comps.x_cmin, comps.slopex_back));
-		y = ft_round(map_back_2((z.y + comps.move_y) * comps.zoom, comps.y_cmin, comps.slopey_back));
-		if (x >= 0 && x < comps.width && y >= 0 && y < comps.height)
-			count_hits++;
-	}
-	i = (n / comps.n);//xpix
-	j = (m / comps.n);//ypix
-	pthread_mutex_lock(&fractal->mutex);
-	comps.density[j][i] += count_hits;//try with store x, y
-	pthread_mutex_unlock(&fractal->mutex);
+	configured = ft_round(fractal->buddha->map_n);
+	if (configured < 1)
+		configured = 1;
+	if (!fractal->buddha->map_adaptive)
+		return (configured);
+	max_dimension = fractal->width;
+	if (fractal->height > max_dimension)
+		max_dimension = fractal->height;
+	effective = ft_round((double)configured
+			* (double)BUDDHA_MAP_REFERENCE_SIZE / (double)max_dimension);
+	if (effective < 1)
+		effective = 1;
+	if (effective > configured)
+		effective = configured;
+	return (effective);
 }
-/* 
-void	buddha_iteration_map(t_fractal *fractal, t_complex c, t_comps comps, double x, double y)
+
+static void	set_projection_bounds(t_comps *comps)
 {
-	t_complex	z;
-	int			iterations;
+	double	base;
+	double	x_half_span;
+	double	y_half_span;
 
-	t_complex	tort;
-	t_complex	hare;
-	int			power = 1;
-	int			lam = 1;
-	
-	iterations = 0;
-	z.x = 0.0;
-	z.y = 0.0;
-	tort = z;
-	while ((z.x * z.x) + (z.y * z.y) < comps.bound
-		&& iterations < comps.b_max_i)
-	{
-		hare = sum_complex(comps.complex_f(z), c);
-		if (fabs(hare.x - tort.x) < 1e-14 && fabs(hare.y - tort.y) < 1e-14)
-		{
-			iterations = comps.b_max_i;
-			break; // cycle detected
-		}
-		if (lam == power)
-		{
-			tort = hare;
-			power *= 2;
-			lam = 0;
-		}
-		iterations++;
-		z = hare;
-		lam++;
-	}
-	if (iterations < comps.b_max_i && iterations > comps.b_min_i)
-		track_importance(fractal, c, comps, x, y);
-} */
+	base = (double)comps->width - 1.0;
+	if (comps->height < comps->width)
+		base = (double)comps->height - 1.0;
+	x_half_span = 2.0 * ((double)comps->height - 1.0) / base;
+	y_half_span = 2.0 * ((double)comps->width - 1.0) / base;
+	comps->x_cmin = -x_half_span;
+	comps->x_cmax = x_half_span;
+	comps->y_cmin = y_half_span;
+	comps->y_cmax = -y_half_span;
+	comps->x_span = comps->x_cmax - comps->x_cmin;
+	comps->y_span = comps->y_cmax - comps->y_cmin;
+}
 
-void	buddha_iteration_map(t_fractal *fractal, t_complex c, t_comps comps, double x, double y)
+static void	set_sample_bounds(t_comps *comps)
 {
-	t_complex	z;
-	int			iterations;
+	comps->sample_x_min = comps->x_cmin;
+	comps->sample_y_min = comps->y_cmin;
+	comps->sample_x_span = comps->x_span;
+	comps->sample_y_span = comps->y_span;
+}
 
-	iterations = 0;
-	z.x = 0.0;
-	z.y = 0.0;
-	while ((z.x * z.x) + (z.y * z.y) < comps.bound && iterations < comps.b_max_i)
+t_complex	buddha_sample_point(t_comps comps, double pixel_x,
+		double pixel_y)
+{
+	t_complex	c;
+
+	if (comps.width == comps.height)
 	{
-		z = sum_complex(comps.complex_f(z), c);
-		iterations++;
+		c.x = map_2(pixel_x, comps.sample_x_min, comps.slopex_to);
+		c.y = map_2(pixel_y, comps.sample_y_min, comps.slopey_to);
 	}
-	if (iterations < comps.b_max_i && iterations > comps.b_min_i)
-	track_importance(fractal, c, comps, x, y);
+	else
+	{
+		c.x = map_2(pixel_y, comps.sample_x_min, comps.slopex_to);
+		c.y = map_2(pixel_x, comps.sample_y_min, comps.slopey_to);
+	}
+	return (c);
 }
 
 t_comps	set_comps(t_fractal *fractal, bool map)
 {
-	t_comps comps;
-	
-	comps.width = (double)fractal->width;
-	comps.height = (double)fractal->height;
-	comps.zoom = fractal->zoom;
+	t_comps	comps;
+	double	sample_scale;
 
-	comps.x_cmin = -2;
-	comps.x_cmax = 2;
-	comps.y_cmin = 2;
-	comps.y_cmax = -2;
-	
-	comps.x_span = (comps.x_cmax - comps.x_cmin);
-	comps.y_span = (comps.y_cmax - comps.y_cmin);
-	//make a ratio of y_span to xspan to use as aspect1, screen is aspect 2
-	if (!map)
+	memset(&comps, 0, sizeof(comps));
+	comps.width = fractal->width;
+	comps.height = fractal->height;
+	comps.zoom = fractal->zoom;
+	set_projection_bounds(&comps);
+	set_sample_bounds(&comps);
+	sample_scale = fractal->buddha->n;
+	if (sample_scale < 1.0)
+		sample_scale = 1.0;
+	comps.map_scale = buddha_map_scale(fractal);
+	if (map)
 	{
-		comps.n = fractal->buddha->n;
-		//mapping to complex
-		comps.slopex_to = comps.x_span / (comps.width);
-		comps.slopey_to = comps.y_span / (comps.height);
-		//stuff for subpix map during actual run
-		//if (comps.zoom > 1.5)
-			comps.sn = ft_round(sqrt(comps.zoom)) + 1;//comps.zoom * 2;//match with zoom
-		/* else
-			comps.sn = 1.0; */
-		comps.step = 1.0 / comps.sn;
-		comps.nn = (int)(comps.sn);
-		comps.ss = 3;// comps.ss² = samples per subpixel in submap
-		/* comps.subpdf = malloc_matrix(comps.nn, comps.nn);
-		if (!comps.subpdf)
-			clear_all(fractal); */
+		comps.slopex_to = comps.sample_x_span
+			/ ((double)comps.height * (double)comps.map_scale);
+		comps.slopey_to = comps.sample_y_span
+			/ ((double)comps.width * (double)comps.map_scale);
 	}
 	else
 	{
-		comps.n = fractal->buddha->map_n;
-		//mapping to complex
-		comps.slopex_to = comps.x_span / (comps.width * comps.n);
-		comps.slopey_to = comps.y_span / (comps.height * comps.n);
+		comps.slopex_to = comps.sample_x_span / (double)comps.height;
+		comps.slopey_to = comps.sample_y_span / (double)comps.width;
+		comps.samples = (double)fractal->size
+			* sample_scale * sample_scale;
+		comps.sample_budget = buddha_sample_budget(fractal);
 	}
-	//mapping back
-	//slope = (new_max - new_min) / (old_max - old_min)
-	comps.slopex_back = (comps.width - 1.0) / comps.x_span;
-	comps.slopey_back = (comps.height - 1.0) / comps.y_span;
-
-	comps.hist = fractal->hist_num;
-	comps.samples = (double)fractal->size * SQ(comps.n);
-	
+	comps.slopex_back = ((double)comps.height - 1.0) / comps.x_span;
+	comps.slopey_back = ((double)comps.width - 1.0) / comps.y_span;
 	comps.move_x = fractal->move_x;
 	comps.move_y = fractal->move_y;
-	comps.inv_zoom = 1.0f / comps.zoom;
-
+	comps.inv_zoom = 1.0 / comps.zoom;
 	comps.complex_f = fractal->complex_f;
-	comps.density = fractal->densities[comps.hist];
-	comps.pdf = fractal->pdf;
+	comps.square_formula = fractal->buddha->square_specialized
+		&& fractal->complex_f == &square_complex;
+	comps.interior_rejection = fractal->buddha->interior_rejection;
+	comps.sample_counts = fractal->sample_counts;
 	comps.b_max_i = fractal->b_max_i;
 	comps.b_min_i = fractal->b_min_i;
 	comps.bound = fractal->bound;
-	comps.flag = 0;
-
 	return (comps);
 }
 
-//grid mapping is used here as the fastest most accurate method to assign avg pixel importance
+static double	importance_score(double sum, double sum_squares,
+		int samples, bool rms)
+{
+	if (!rms)
+		return (sum);
+	return (sqrt(sum_squares / (double)samples));
+}
+
+static int	map_escape_length(t_complex c, t_comps comps, t_complex *cache)
+{
+	if (cache && comps.square_formula)
+		return (buddha_escape_orbit(c, comps, comps.b_max_i, cache,
+				BUDDHA_ORBIT_CACHE_POINTS));
+	return (buddha_escape_length(c, comps, comps.b_max_i));
+}
+
+static int	map_visible_hits(t_complex c, t_comps comps,
+		int orbit_length, t_complex *cache)
+{
+	if (cache && comps.square_formula
+		&& orbit_length <= BUDDHA_ORBIT_CACHE_POINTS)
+		return (buddha_cached_visible_hits(cache, comps, orbit_length));
+	return (buddha_visible_hits(c, comps, orbit_length));
+}
+
+static double	map_cell_importance(int pixel_x, int pixel_y, t_comps comps,
+		bool rms, t_complex *orbit_cache)
+{
+	t_complex	c;
+	double		sum;
+	double		sum_squares;
+	int			hits;
+	int			orbit_length;
+	int			sub_x;
+	int			sub_y;
+
+	sum = 0.0;
+	sum_squares = 0.0;
+	sub_y = -1;
+	while (++sub_y < comps.map_scale)
+	{
+		sub_x = -1;
+		while (++sub_x < comps.map_scale)
+		{
+			c = buddha_sample_point(comps,
+					(double)(pixel_x * comps.map_scale + sub_x) + 0.5,
+					(double)(pixel_y * comps.map_scale + sub_y) + 0.5);
+			orbit_length = map_escape_length(c, comps, orbit_cache);
+			hits = 0;
+			if (orbit_length < comps.b_max_i
+				&& orbit_length > comps.b_min_i)
+				hits = map_visible_hits(c, comps, orbit_length, orbit_cache);
+			sum += (double)hits;
+			sum_squares += (double)hits * (double)hits;
+		}
+	}
+	return (importance_score(sum, sum_squares,
+			comps.map_scale * comps.map_scale, rms));
+}
+
+static void	channel_limits(t_buddha *b, int minimum[3], int maximum[3])
+{
+	minimum[0] = b->min1;
+	minimum[1] = b->min2;
+	minimum[2] = b->min3;
+	maximum[0] = b->max1;
+	maximum[1] = b->max2;
+	maximum[2] = b->max3;
+}
+
+static void	map_cell_all(t_fractal *fractal, int pixel_x, int pixel_y,
+		t_comps comps, t_complex *orbit_cache)
+{
+	t_complex	c;
+	double		sum[3];
+	double		sum_squares[3];
+	int			minimum[3];
+	int			maximum[3];
+	int			orbit_length;
+	int			hits;
+	int			channel;
+	int			sub_x;
+	int			sub_y;
+	int			pilot_samples;
+
+	memset(sum, 0, sizeof(sum));
+	memset(sum_squares, 0, sizeof(sum_squares));
+	channel_limits(fractal->buddha, minimum, maximum);
+	pilot_samples = comps.map_scale * comps.map_scale;
+	sub_y = -1;
+	while (++sub_y < comps.map_scale)
+	{
+		sub_x = -1;
+		while (++sub_x < comps.map_scale)
+		{
+			c = buddha_sample_point(comps,
+					(double)(pixel_x * comps.map_scale + sub_x) + 0.5,
+					(double)(pixel_y * comps.map_scale + sub_y) + 0.5);
+			orbit_length = map_escape_length(c, comps, orbit_cache);
+			channel = -1;
+			while (++channel < 3)
+				if (orbit_length < maximum[channel]
+					&& orbit_length > minimum[channel])
+					break ;
+			if (channel == 3)
+				continue ;
+			hits = map_visible_hits(c, comps, orbit_length, orbit_cache);
+			channel = -1;
+			while (++channel < 3)
+			{
+				if (orbit_length >= maximum[channel]
+					|| orbit_length <= minimum[channel])
+					continue ;
+				sum[channel] += (double)hits;
+				sum_squares[channel] += (double)hits * (double)hits;
+			}
+		}
+	}
+	channel = -1;
+	while (++channel < 3)
+		fractal->densities[channel][pixel_y][pixel_x]
+			= importance_score(sum[channel], sum_squares[channel],
+				pilot_samples, fractal->buddha->importance_rms);
+}
 
 void	*buddha_set_map(void *arg)
 {
 	t_piece		*piece;
 	t_fractal	*fractal;
-	t_complex	c;
 	t_comps		comps;
-	
-	int		x;
-	int		y;
-	
+	size_t		index;
+	size_t		end;
+	int			x;
+	int			y;
+	t_complex	orbit_cache[BUDDHA_ORBIT_CACHE_POINTS];
+	t_complex	*cache;
+
 	piece = (t_piece *)arg;
 	fractal = piece->fractal;
-	Xoro128		*rng = &piece->rng;
-	
 	comps = set_comps(fractal, true);
-	y = piece->y_s - 1;
-	while (++y < piece->y_e)
+	cache = NULL;
+	if (fractal->buddha->orbit_cache && comps.square_formula
+		&& comps.b_max_i <= BUDDHA_ORBIT_CACHE_POINTS)
+		cache = orbit_cache;
+	index = (size_t)piece->x_s;
+	end = (size_t)piece->x_e;
+	while (index < end)
 	{
-		//comps.y = y;//
-		x = piece->x_s - 1;
-		while (++x < piece->x_e)
-		{
-			//comps.x = x;//
-			c.x = map_2((double)x + .5, comps.x_cmin, comps.slopex_to);
-			c.y = map_2((double)y + .5, comps.y_cmin, comps.slopey_to);
-			buddha_iteration_map(fractal, c, comps, x, y);
-			
-			//trying the within window map, used for zooms away from main body
-			/* c.x = map_2(x, comps.x_cmin, comps.slopex_to) * comps.inv_zoom + comps.move_x;
-			c.y = map_2(y, comps.y_cmin, comps.slopey_to) * comps.inv_zoom - comps.move_y;
-			buddha_iteration_map(fractal, c, comps, x, y);	 */
-		}
+		x = (int)(index % (size_t)fractal->width);
+		y = (int)(index / (size_t)fractal->width);
+		fractal->densities[fractal->hist_num][y][x]
+			= map_cell_importance(x, y, comps,
+				fractal->buddha->importance_rms, cache);
+		index++;
 	}
-	pthread_exit(NULL);
+	return (NULL);
+}
+
+static void	*buddha_set_map_all(void *arg)
+{
+	t_piece		*piece;
+	t_fractal	*fractal;
+	t_comps		comps;
+	size_t		index;
+	size_t		end;
+	int			x;
+	int			y;
+	t_complex	orbit_cache[BUDDHA_ORBIT_CACHE_POINTS];
+	t_complex	*cache;
+
+	piece = (t_piece *)arg;
+	fractal = piece->fractal;
+	comps = set_comps(fractal, true);
+	comps.b_max_i = fractal->buddha->max1;
+	if (fractal->buddha->max2 > comps.b_max_i)
+		comps.b_max_i = fractal->buddha->max2;
+	if (fractal->buddha->max3 > comps.b_max_i)
+		comps.b_max_i = fractal->buddha->max3;
+	cache = NULL;
+	if (fractal->buddha->orbit_cache && comps.square_formula
+		&& comps.b_max_i <= BUDDHA_ORBIT_CACHE_POINTS)
+		cache = orbit_cache;
+	index = (size_t)piece->x_s;
+	end = (size_t)piece->x_e;
+	while (index < end)
+	{
+		x = (int)(index % (size_t)fractal->width);
+		y = (int)(index / (size_t)fractal->width);
+		map_cell_all(fractal, x, y, comps, cache);
+		index++;
+	}
+	return (NULL);
+}
+
+static void	run_map_workers(t_fractal *fractal, void *(*worker_fn)(void *))
+{
+	int		workers;
+	int		worker;
+	t_piece	pieces[fractal->worker_histogram_count];
+
+	workers = fractal->worker_histogram_count;
+	worker = -1;
+	while (++worker < workers)
+	{
+		pieces[worker].x_s = (int)((size_t)worker
+				* (size_t)fractal->size / (size_t)workers);
+		pieces[worker].x_e = (int)((size_t)(worker + 1)
+				* (size_t)fractal->size / (size_t)workers);
+		pieces[worker].fractal = fractal;
+		if (pthread_create(&fractal->threads[worker], NULL,
+				worker_fn, &pieces[worker]) != 0)
+			thread_error(fractal, worker);
+	}
+	join_threads(fractal->threads, workers, 1);
+}
+
+void	buddha_map(t_fractal *fractal)
+{
+	run_map_workers(fractal, buddha_set_map);
+}
+
+void	buddha_map_all(t_fractal *fractal)
+{
+	run_map_workers(fractal, buddha_set_map_all);
 }

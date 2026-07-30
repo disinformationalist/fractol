@@ -115,9 +115,6 @@ void			downsample_double(int width, int height, double **dst, double **src, int 
 
 
 
-int				mean_convo_filter(void *mlx_ptr, t_img *img, int width, int height, int kern_size);
-int				mean_convo_matrix(double **mat, int width, int height, int kern_size);
-
 int				gaussian_convo_filter(void *mlx_ptr, t_img *img, int width, int height, int kern_size, double sigma);
 int				gaussmirror_convo_filter(void *mlx_ptr, t_img *img, int width, int height, int kern_size, int layers, double sigma);
 t_img			*sobel(void *mlx_ptr, t_img *img, int kern_size, int width, int height);//change sobel like gauss whenits done
@@ -172,7 +169,8 @@ void			gamma_correct_rgb(t_img *img, int width, int height, double gamma, t_chan
 
 
 /******EXPORT******/
-int				export_png(const char *filename, t_img *img, int width, int height, png_text *text);
+int				export_png(const char *filename, t_img *img, int width,
+					int height, png_text *text, t_pixel_format format);
 
 //export utils
 char 			*get_nxt_name(char *name);
@@ -184,7 +182,7 @@ int				init_png_structs(t_png_io *png_img, const char *filename);
 int				error_1(t_png_io *png_img, const char *msg);
 void			free_png_rows(png_structp png_ptr, png_byte **row_pointers, int j);
 void			clean_memory(t_png_io *png_img, int j, bool export);
-void			init_vars(t_png_io *png_img);
+void			init_vars(t_png_io *png_img, t_pixel_format format);
 
 /*****IMPORT******/
 t_img			*import_png(void *mlx_ptr, const char *filename, int *width, int *height);
