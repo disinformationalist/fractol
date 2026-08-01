@@ -150,6 +150,100 @@ int	buddha_cached_visible_hits(const t_complex *orbit, t_comps comps,
 	return (hits);
 }
 
+static void	footprint_grid(t_comps comps, int grid[2])
+{
+	int	long_axis;
+
+	long_axis = comps.width;
+	if (comps.height > long_axis)
+		long_axis = comps.height;
+	grid[0] = (comps.width * BUDDHA_SCORE_TILE_AXIS + long_axis - 1)
+		/ long_axis;
+	grid[1] = (comps.height * BUDDHA_SCORE_TILE_AXIS + long_axis - 1)
+		/ long_axis;
+	if (grid[0] < 1)
+		grid[0] = 1;
+	if (grid[1] < 1)
+		grid[1] = 1;
+}
+
+static void	footprint_begin(t_buddha_score_scratch *scratch)
+{
+	scratch->generation++;
+	if (scratch->generation == 0)
+	{
+		memset(scratch->stamp, 0, sizeof(scratch->stamp));
+		scratch->generation = 1;
+	}
+}
+
+static void	footprint_add(t_complex z, t_comps comps, int grid[2],
+		t_buddha_score_scratch *scratch, int *hits, long double *sum_squares)
+{
+	size_t		index;
+	uint32_t	previous;
+	int			screen_x;
+	int			screen_y;
+
+	if (!project_orbit(z, comps, &screen_x, &screen_y))
+		return ;
+	(*hits)++;
+	index = (size_t)(screen_y * grid[1] / comps.height)
+		* BUDDHA_SCORE_TILE_AXIS
+		+ (size_t)(screen_x * grid[0] / comps.width);
+	previous = 0;
+	if (scratch->stamp[index] == scratch->generation)
+		previous = scratch->visits[index];
+	else
+		scratch->stamp[index] = scratch->generation;
+	scratch->visits[index] = previous + 1;
+	*sum_squares += 2.0L * (long double)previous + 1.0L;
+}
+
+double	buddha_visible_footprint(t_complex c, t_comps comps,
+		int orbit_length, t_buddha_score_scratch *scratch, int *hits)
+{
+	t_complex	z;
+	long double	sum_squares;
+	int			grid[2];
+	int			iteration;
+
+	footprint_grid(comps, grid);
+	footprint_begin(scratch);
+	z = (t_complex){0.0, 0.0};
+	sum_squares = 0.0L;
+	*hits = 0;
+	iteration = 0;
+	while (iteration++ < orbit_length)
+	{
+		if (comps.square_formula)
+			z = square_step(z, c);
+		else
+			z = sum_complex(comps.complex_f(z), c);
+		footprint_add(z, comps, grid, scratch, hits, &sum_squares);
+	}
+	return (sqrt((double)sum_squares));
+}
+
+double	buddha_cached_visible_footprint(const t_complex *orbit,
+		t_comps comps, int orbit_length, t_buddha_score_scratch *scratch,
+		int *hits)
+{
+	long double	sum_squares;
+	int			grid[2];
+	int			iteration;
+
+	footprint_grid(comps, grid);
+	footprint_begin(scratch);
+	sum_squares = 0.0L;
+	*hits = 0;
+	iteration = -1;
+	while (++iteration < orbit_length)
+		footprint_add(orbit[iteration], comps, grid, scratch, hits,
+			&sum_squares);
+	return (sqrt((double)sum_squares));
+}
+
 static void	track_orbit(t_complex c, double weight, t_comps comps,
 		int orbit_length)
 {

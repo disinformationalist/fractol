@@ -110,6 +110,9 @@ benchmark-buddha: $(BUDDHA_TEST)
 benchmark-buddha-nlm: $(BUDDHA_TEST)
 	$(BUDDHA_TEST) --benchmark-nlm
 
+benchmark-buddha-importance-zoom: $(BUDDHA_TEST)
+	$(BUDDHA_TEST) --benchmark-importance-zoom
+
 clean:
 	rm -rf $(OBS) $(DEPS) $(BUDDHA_TEST_DEP)
 	cd image_processing && make clean
@@ -121,6 +124,6 @@ fclean: clean
 re: fclean all
 
 .PHONY: all clean fclean re chaos test-buddha reference-buddha \
-	benchmark-buddha benchmark-buddha-nlm
+	benchmark-buddha benchmark-buddha-nlm benchmark-buddha-importance-zoom
 
 -include $(DEPS) $(BUDDHA_TEST_DEP)

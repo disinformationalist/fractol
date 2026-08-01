@@ -3,6 +3,10 @@
 #define NLM_EPS 1e-12
 #define NLM_EXP_CUTOFF 12.0
 #define NLM_EXP_LUT_SIZE 4096
+#define NLM_FIREFLY_WHITE_THRESHOLD 0.0
+#define NLM_FIREFLY_ROWS 5
+#define NLM_FIREFLY_RADIUS 2
+#define NLM_FIREFLY_NEIGHBORS 24
 
 typedef struct s_nlm_ctx
 {
@@ -15,6 +19,10 @@ typedef struct s_nlm_ctx
 	double		kc2;
 	double		noise_scale;
 	double		noise_floor[3];
+	double		white[3];
+	double		variance_cap;
+	double		firefly_factor;
+	bool		mixture_variance;
 	double		weight[3];
 	double		weight_sum;
 	double		patch_norm;
@@ -65,8 +73,10 @@ static double	nlm_exp_weight(double distance)
 	double	fraction;
 	int		index;
 
-	if (distance >= NLM_EXP_CUTOFF)
+	if (!isfinite(distance) || distance >= NLM_EXP_CUTOFF)
 		return (g_nlm_exp_lut[NLM_EXP_LUT_SIZE]);
+	if (distance <= 0.0)
+		return (g_nlm_exp_lut[0]);
 	position = distance
 		* ((double)NLM_EXP_LUT_SIZE / NLM_EXP_CUTOFF);
 	index = (int)position;
@@ -96,6 +106,11 @@ static t_nlm_ctx	make_nlm_context(t_fractal *fractal)
 	ctx.search_radius = b->nlm_search_radius;
 	ctx.kc2 = b->nlm_kc * b->nlm_kc;
 	ctx.noise_scale = b->nlm_noise_scale;
+	ctx.variance_cap = 0.0;
+	ctx.mixture_variance = b->proposal_mixture
+		&& b->proposal_leaf_count > 0;
+	if (ctx.mixture_variance)
+		ctx.variance_cap = b->nlm_relative_variance_cap;
 	ctx.weight[0] = b->nlm_b_weight;
 	ctx.weight[1] = b->nlm_g_weight;
 	ctx.weight[2] = b->nlm_r_weight;
@@ -109,11 +124,194 @@ static t_nlm_ctx	make_nlm_context(t_fractal *fractal)
 				fractal->width, fractal->height, b->white_percentile);
 		if (white <= 0.0)
 			white = 1.0;
+		ctx.white[channel] = white;
 		ctx.noise_floor[channel] = white * white * b->nlm_noise_floor;
 	}
+	ctx.firefly_factor = 0.0;
+	if (ctx.mixture_variance)
+		ctx.firefly_factor = b->nlm_firefly_factor;
+	if (ctx.firefly_factor > 0.0 && ctx.firefly_factor < 1.0)
+		ctx.firefly_factor = 1.0;
 	patch_width = 2 * ctx.patch_radius + 1;
 	ctx.patch_norm = (double)(patch_width * patch_width) * ctx.weight_sum;
 	return (ctx);
+}
+
+static void	fill_firefly_row(t_fractal *fractal, const t_nlm_ctx *ctx,
+		double *rows, int y)
+{
+	int	channel;
+	int	x;
+
+	channel = -1;
+	while (++channel < 3)
+	{
+		x = -1;
+		while (++x < fractal->width)
+			rows[((size_t)channel * NLM_FIREFLY_ROWS
+					+ (size_t)(y % NLM_FIREFLY_ROWS))
+				* (size_t)fractal->width + (size_t)x]
+				= fractal->densities[channel][y][x] / ctx->white[channel];
+	}
+}
+
+static void	firefly_swap(double *first, double *second)
+{
+	double	temporary;
+
+	temporary = *first;
+	*first = *second;
+	*second = temporary;
+}
+
+static double	firefly_select(double *values, int count, int target)
+{
+	double	pivot;
+	int		left;
+	int		right;
+	int		low;
+	int		high;
+	int		index;
+
+	left = 0;
+	right = count - 1;
+	while (left < right)
+	{
+		pivot = values[left + (right - left) / 2];
+		low = left;
+		index = left;
+		high = right;
+		while (index <= high)
+		{
+			if (values[index] < pivot)
+				firefly_swap(&values[index++], &values[low++]);
+			else if (values[index] > pivot)
+				firefly_swap(&values[index], &values[high--]);
+			else
+				index++;
+		}
+		if (target < low)
+			right = low - 1;
+		else if (target > high)
+			left = high + 1;
+		else
+			return (values[target]);
+	}
+	return (values[left]);
+}
+
+static double	firefly_neighbor_support(double *rows, int width, int height,
+		int channel, int x, int y)
+{
+	double	values[NLM_FIREFLY_NEIGHBORS];
+	int		count;
+	int		nx;
+	int		ny;
+
+	count = 0;
+	ny = max_int(0, y - NLM_FIREFLY_RADIUS) - 1;
+	while (++ny <= min_int(height - 1, y + NLM_FIREFLY_RADIUS))
+	{
+		nx = max_int(0, x - NLM_FIREFLY_RADIUS) - 1;
+		while (++nx <= min_int(width - 1, x + NLM_FIREFLY_RADIUS))
+		{
+			if (nx != x || ny != y)
+			{
+				values[count++] = rows[((size_t)channel * NLM_FIREFLY_ROWS
+						+ (size_t)(ny % NLM_FIREFLY_ROWS))
+					* (size_t)width + (size_t)nx];
+			}
+		}
+	}
+	if (count == 0)
+		return (0.0);
+	return (firefly_select(values, count, count / 2));
+}
+
+static size_t	suppress_firefly_row(t_fractal *fractal,
+		const t_nlm_ctx *ctx, double *rows, int y)
+{
+	double	center[3];
+	double	neighbor;
+	double	target;
+	size_t	suppressed;
+	int		channel;
+	int		x;
+	bool	changed;
+
+	suppressed = 0;
+	x = -1;
+	while (++x < fractal->width)
+	{
+		channel = -1;
+		while (++channel < 3)
+		{
+			center[channel] = rows[((size_t)channel * NLM_FIREFLY_ROWS
+					+ (size_t)(y % NLM_FIREFLY_ROWS))
+				* (size_t)fractal->width
+				+ (size_t)x];
+		}
+		changed = false;
+		channel = -1;
+		while (++channel < 3)
+		{
+			if (center[channel] <= NLM_FIREFLY_WHITE_THRESHOLD)
+				continue ;
+			neighbor = firefly_neighbor_support(rows, fractal->width,
+					fractal->height, channel, x, y);
+			target = ctx->firefly_factor * neighbor;
+			if (center[channel] > target)
+			{
+				fractal->densities[channel][y][x]
+					= target * ctx->white[channel];
+				changed = true;
+			}
+		}
+		if (changed)
+			suppressed++;
+	}
+	return (suppressed);
+}
+
+static int	suppress_mixture_fireflies(t_fractal *fractal,
+		const t_nlm_ctx *ctx, size_t *suppressed)
+{
+	t_nlm_ctx	filtered;
+	double	*rows;
+	int		channel;
+	int		y;
+
+	*suppressed = 0;
+	if (ctx->firefly_factor <= 0.0 || fractal->width <= 0
+		|| fractal->height <= 0)
+		return (0);
+	rows = malloc((size_t)fractal->width * 3 * NLM_FIREFLY_ROWS
+			* sizeof(*rows));
+	if (!rows)
+		return (-1);
+	filtered = *ctx;
+	channel = -1;
+	while (++channel < 3)
+	{
+		filtered.white[channel] = buddha_density_percentile(
+				fractal->densities[channel], fractal->width,
+				fractal->height, fractal->buddha->white_percentile);
+		if (filtered.white[channel] <= 0.0)
+			filtered.white[channel] = 1.0;
+	}
+	y = -1;
+	while (++y < min_int(fractal->height, NLM_FIREFLY_RADIUS + 1))
+		fill_firefly_row(fractal, &filtered, rows, y);
+	y = -1;
+	while (++y < fractal->height)
+	{
+		*suppressed += suppress_firefly_row(fractal, &filtered, rows, y);
+		if (y + NLM_FIREFLY_RADIUS + 1 < fractal->height)
+			fill_firefly_row(fractal, &filtered,
+				rows, y + NLM_FIREFLY_RADIUS + 1);
+	}
+	free(rows);
+	return (0);
 }
 
 static double	smooth_variance_value(double **variance, int x, int y,
@@ -193,14 +391,36 @@ static double	nlm_term(double value1, double value2,
 		const t_nlm_ctx *ctx)
 {
 	double	difference;
+	double	term;
 	double	variance;
+	double	variance_cap;
 
 	difference = value1 - value2;
-	variance = (variance1 + variance2) * ctx->noise_scale;
+	if (ctx->mixture_variance)
+	{
+		variance = variance1;
+		if (variance2 < variance1)
+			variance += variance2;
+		else
+			variance += variance1;
+		variance *= ctx->noise_scale;
+		if (ctx->variance_cap > 0.0)
+		{
+			variance_cap = ctx->variance_cap
+				* (value1 * value1 + value2 * value2);
+			if (variance > variance_cap)
+				variance = variance_cap;
+		}
+	}
+	else
+		variance = (variance1 + variance2) * ctx->noise_scale;
 	if (variance < ctx->noise_floor[channel])
 		variance = ctx->noise_floor[channel];
-	return ((difference * difference - variance)
-		/ (NLM_EPS + ctx->kc2 * variance));
+	term = (difference * difference - variance)
+		/ (NLM_EPS + ctx->kc2 * variance);
+	if (!isfinite(term))
+		return (NLM_EXP_CUTOFF);
+	return (term);
 }
 
 static double	shifted_term(int x, int y, int dx, int dy,
@@ -624,6 +844,7 @@ int	buddha_nlm(t_fractal *fractal)
 	int			column;
 	int			row;
 	int			index;
+	size_t		suppressed;
 	bool		was_showing_filtered;
 
 	if (!fractal->buddha || !fractal->densities
@@ -656,10 +877,12 @@ int	buddha_nlm(t_fractal *fractal)
 	context = make_nlm_context(fractal);
 	if (buddha_profile_enabled())
 		printf("[buddha] nlm patch=%d search=%d kc=%.3f "
-			"noise-scale=%.5f term-cache=patch-ring "
+			"noise-scale=%.5f mixture-variance-cap=%.5f "
+			"term-cache=patch-ring "
 			"variance-scratch=two-row:%.3fMiB\n",
 			context.patch_radius, context.search_radius, sqrt(context.kc2),
-			context.noise_scale, (double)fractal->width * 2.0
+			context.noise_scale, context.variance_cap,
+			(double)fractal->width * 2.0
 			* sizeof(double) / (1024.0 * 1024.0));
 	phase_start = get_time();
 	row = -1;
@@ -677,8 +900,20 @@ int	buddha_nlm(t_fractal *fractal)
 	}
 	join_threads(fractal->threads, fractal->num_rows, fractal->num_cols);
 	swap_nlm_output(fractal);
+	buddha_profile_phase("nlm matching", phase_start);
+	phase_start = get_time();
+	if (suppress_mixture_fireflies(fractal, &context, &suppressed) != 0)
+		fprintf(stderr, "Buddha NLM firefly suppression skipped: "
+			"row allocation failed\n");
+	else if (buddha_profile_enabled() && context.firefly_factor > 0.0)
+		printf("[buddha] nlm firefly factor=%.3f threshold=%.1f "
+			"suppressed=%zu scratch=fifteen-row:%.3fMiB\n",
+			context.firefly_factor, NLM_FIREFLY_WHITE_THRESHOLD,
+			suppressed, (double)fractal->width * 3.0
+			* NLM_FIREFLY_ROWS * sizeof(double)
+			/ (1024.0 * 1024.0));
+	buddha_profile_phase("nlm firefly", phase_start);
 	b->nlm_filtered_ready = true;
 	b->nlm_show_filtered = true;
-	buddha_profile_phase("nlm matching", phase_start);
 	return (0);
 }

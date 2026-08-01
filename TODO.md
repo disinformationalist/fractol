@@ -35,6 +35,19 @@ possible.
 
 - Build a small repeatable comparison set covering square, landscape, portrait,
   two/three buffers, raw/filtered NLM, and representative tone modes.
+- Continue replacing the fixed-grid deep-zoom importance proposal in measured
+  stages. The recurrence-aware viewport-footprint score, deterministic
+  beam-quadtree refinement, and frozen global/window/retained-leaf defensive
+  mixture with full inverse-mixture weighting are implemented. Next, evaluate
+  a Mandelbrot-boundary component and variance-aware mixture tuning using
+  matched renders before enabling either. Keep proposals frozen across all NLM
+  buffers.
+- Compare the opt-in deterministic stratified-jitter pilot against the default
+  centered grid in matched zoom-420/1000 renders. Initial profiling found no
+  consistent discovery improvement, so do not enable it without better evidence.
+- Consider local mutation and reverse-orbit/Newton guidance only after the
+  defensive mixture and adaptive tree are correct; retain a nonzero global
+  component so undiscovered support remains reachable.
 - Consider metadata-driven command reconstruction once the first stable
   metadata format and startup controls are settled.
 

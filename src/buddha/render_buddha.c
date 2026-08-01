@@ -37,6 +37,8 @@ static void	build_channel_importance(t_fractal *fractal,
 		buddha_importance_capture(fractal, channel.histogram);
 	}
 	build_importance_map(fractal, fractal->densities[channel.histogram]);
+	buddha_profile_importance(fractal,
+		fractal->densities[channel.histogram], channel.histogram);
 }
 
 static void	sample_channel(t_fractal *fractal, t_buddha_channel channel)
@@ -147,9 +149,11 @@ void	render_buddha(t_fractal *fractal)
 
 	start = get_time();
 	if (buddha_profile_enabled())
-		printf("[buddha] orbit=%s cache=%s<=%d interior=%s map=%s "
-			"configured=%d effective=%d metric=%s buffers=%d "
-			"samples-per-cell=%.3f allocation=flat-u32:%.2fMiB\n",
+		printf("[buddha] orbit=%s cache=%s<=%d interior=%s map=%s pilot=%s "
+			"refine=%s "
+			"configured=%d effective=%d score=%s aggregate=%s buffers=%d "
+			"samples-per-cell=%.3f proposal=%s(%.2f/%.2f/%.2f) "
+			"allocation=flat-u32:%.2fMiB\n",
 			(char *[2]){"generic", "square-specialized"}
 			[fractal->buddha->square_specialized
 				&& fractal->complex_f == &square_complex],
@@ -160,9 +164,22 @@ void	render_buddha(t_fractal *fractal)
 			[fractal->buddha->interior_rejection],
 			(char *[2]){"fixed", "adaptive"}
 			[fractal->buddha->map_adaptive],
+			(char *[2]){"centered", "stratified-jitter-v1"}
+			[fractal->buddha->importance_pilot_jitter],
+			(char *[3]){"off", "auto", "force"}
+			[fractal->buddha->importance_refinement
+				+ fractal->buddha->importance_refinement_force],
 			ft_round(fractal->buddha->map_n), buddha_map_scale(fractal),
+			(char *[2]){"visible-hits", "viewport-tile-l2"}
+			[fractal->buddha->importance_recurrence],
 			(char *[2]){"mean", "rms"}[fractal->buddha->importance_rms],
 			fractal->buffs, fractal->buddha->n * fractal->buddha->n,
+			(char *[2]){"legacy", "mixture"}
+			[fractal->buddha->proposal_mixture],
+			fractal->buddha->proposal_global,
+			fractal->buddha->proposal_window,
+			1.0 - fractal->buddha->proposal_global
+			- fractal->buddha->proposal_window,
 			(double)fractal->size * sizeof(*fractal->sample_counts)
 			/ (1024.0 * 1024.0));
 	buddha_nlm_reset(fractal);

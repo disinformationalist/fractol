@@ -78,14 +78,29 @@ void	print_buddha_vals(t_buddha *buddha, t_fractal *fractal)
 	printf("Interior reject  : %s\n",
 		(char *[2]){"off", "analytic cardioid/bulb"}
 		[buddha->interior_rejection]);
-	printf("Importance pilot : configured=%d effective=%d %s metric=%s\n",
+	printf("Importance pilot : configured=%d effective=%d %s samples=%s "
+		"refine=%s score=%s aggregate=%s\n",
 		ft_round(buddha->map_n), buddha_map_scale(fractal),
 		(char *[2]){"fixed", "adaptive"}[buddha->map_adaptive],
-		(char *[2]){"mean hits", "RMS hits"}[buddha->importance_rms]);
-	printf("NLM              : %s (patch=%d search=%d kc=%.3f; %s)\n\n",
+		(char *[2]){"centered grid", "stratified jitter"}
+		[buddha->importance_pilot_jitter],
+		(char *[3]){"off", "auto", "force"}
+		[buddha->importance_refinement
+			+ buddha->importance_refinement_force],
+		(char *[2]){"visible hits", "viewport tile L2"}
+		[buddha->importance_recurrence],
+		(char *[2]){"mean", "RMS"}[buddha->importance_rms]);
+	printf("Proposal sampler : %s (global %.1f%%, window %.1f%%, "
+		"guided %.1f%%)\n",
+		(char *[2]){"legacy cells", "defensive mixture"}
+		[buddha->proposal_mixture], 100.0 * buddha->proposal_global,
+		100.0 * buddha->proposal_window,
+		100.0 * (1.0 - buddha->proposal_global - buddha->proposal_window));
+	printf("NLM              : %s (patch=%d search=%d kc=%.3f "
+		"firefly=%.2f; %s)\n\n",
 		(char *[2]){RED"OFF"RESET, GREEN"ON"RESET}[buddha->nlm_enabled],
 		buddha->nlm_patch_radius, buddha->nlm_search_radius,
-		buddha->nlm_kc,
+		buddha->nlm_kc, buddha->nlm_firefly_factor,
 		(char *[2]){"unfiltered mean", "filtered"}
 		[buddha->nlm_show_filtered]);
 	printf("Importance map   : %s%s; mode=%s\n\n",

@@ -91,7 +91,10 @@ static int	setup_case_config_dims(t_fractal *fractal, t_buddha *buddha,
 	buddha->n = 2.0;
 	buddha->map_n = 1.0;
 	buddha->map_adaptive = true;
+	buddha->importance_pilot_jitter = false;
 	buddha->importance_rms = true;
+	buddha->proposal_global = 0.15;
+	buddha->proposal_window = 0.55;
 	buddha->square_specialized = true;
 	buddha->orbit_cache = true;
 	buddha->interior_rejection = true;
@@ -109,6 +112,8 @@ static int	setup_case_config_dims(t_fractal *fractal, t_buddha *buddha,
 	buddha->nlm_kc = 1.0;
 	buddha->nlm_noise_scale = 1.0 / (double)buffers;
 	buddha->nlm_noise_floor = 1.0 / (255.0 * 255.0);
+	buddha->nlm_relative_variance_cap = 0.02;
+	buddha->nlm_firefly_factor = 2.0;
 	buddha->nlm_r_weight = 1.0;
 	buddha->nlm_g_weight = 1.0;
 	buddha->nlm_b_weight = 1.0;
@@ -571,6 +576,45 @@ static void	set_test_channel(t_fractal *fractal, int channel)
 	}
 }
 
+static int	test_viewport_footprint_score(void)
+{
+	t_fractal				fractal;
+	t_buddha				buddha;
+	t_comps				comps;
+	t_complex				orbit[16];
+	t_buddha_score_scratch	scratch;
+	double					score;
+	int					hits;
+	int					i;
+
+	if (setup_case(&fractal, &buddha, BUDDHA1) != 0)
+		return (fprintf(stderr, "Footprint-score setup failed\n"), 1);
+	comps = set_comps(&fractal, false);
+	memset(&scratch, 0, sizeof(scratch));
+	i = -1;
+	while (++i < 16)
+		orbit[i] = (t_complex){fractal.move_x, -fractal.move_y};
+	score = buddha_cached_visible_footprint(orbit, comps, 16,
+			&scratch, &hits);
+	if (hits != 16 || fabs(score - 16.0) > 1e-12)
+		return (teardown_case(&fractal),
+			fprintf(stderr, "Repeated footprint score failed\n"), 1);
+	i = -1;
+	while (++i < 4)
+	{
+		orbit[i].x = fractal.move_x + (-1.2 + 0.8 * (double)i)
+			/ fractal.zoom;
+		orbit[i].y = -fractal.move_y + (-1.2 + 0.8 * (double)i)
+			/ fractal.zoom;
+	}
+	score = buddha_cached_visible_footprint(orbit, comps, 4,
+			&scratch, &hits);
+	teardown_case(&fractal);
+	if (hits != 4 || fabs(score - 2.0) > 1e-12)
+		return (fprintf(stderr, "Diffuse footprint score failed\n"), 1);
+	return (0);
+}
+
 static int	test_combined_map_equivalence(void)
 {
 	t_fractal	fractal;
@@ -582,11 +626,15 @@ static int	test_combined_map_equivalence(void)
 	int			y;
 	int			failed;
 	int			rms_different;
+	int			footprint_different;
+	long double	hit_map_sum;
+	long double	footprint_map_sum;
 
 	if (setup_case_workers(&fractal, &buddha, BUDDHA1, 4) != 0)
 		return (fprintf(stderr, "Combined-map setup failed\n"), 1);
 	buddha.map_n = 2.0;
 	buddha.map_adaptive = false;
+	buddha.importance_pilot_jitter = true;
 	buddha.importance_rms = false;
 	channel_bytes = (size_t)fractal.size * sizeof(*separate);
 	separate = malloc(3 * channel_bytes);
@@ -618,6 +666,20 @@ static int	test_combined_map_equivalence(void)
 	channel = -1;
 	while (++channel < 3)
 	{
+		if (buddha.pilot_stats.samples[channel]
+			!= (uint64_t)fractal.size * 4
+			|| buddha.pilot_stats.eligible[channel]
+			> buddha.pilot_stats.samples[channel]
+			|| buddha.pilot_stats.useful[channel]
+			> buddha.pilot_stats.eligible[channel]
+			|| buddha.pilot_stats.visible_hits[channel]
+			< buddha.pilot_stats.useful[channel])
+		{
+			fprintf(stderr,
+				"Combined importance pilot statistics failed for channel %d\n",
+				channel);
+			failed = 1;
+		}
 		y = -1;
 		while (++y < fractal.height)
 		{
@@ -638,6 +700,7 @@ static int	test_combined_map_equivalence(void)
 	set_test_channel(&fractal, 2);
 	buddha_map(&fractal);
 	rms_different = 0;
+	hit_map_sum = 0.0L;
 	y = -1;
 	while (++y < fractal.height)
 	{
@@ -656,11 +719,69 @@ static int	test_combined_map_equivalence(void)
 					2 * (size_t)fractal.size
 					+ (size_t)y * (size_t)fractal.width + (size_t)x])
 				rms_different = 1;
+			hit_map_sum += fractal.densities[2][y][x];
 		}
 	}
 	if (!rms_different)
 	{
 		fprintf(stderr, "RMS importance metric did not use the second moment\n");
+		failed = 1;
+	}
+	buddha.importance_recurrence = true;
+	buddha_map_all(&fractal);
+	footprint_map_sum = 0.0L;
+	channel = -1;
+	while (++channel < 3)
+	{
+		if (buddha.pilot_stats.score_sum[channel] <= 0.0L
+			|| buddha.pilot_stats.score_sum[channel]
+			> (long double)buddha.pilot_stats.visible_hits[channel])
+		{
+			fprintf(stderr, "Viewport footprint statistics failed channel %d\n",
+				channel);
+			failed = 1;
+		}
+		y = -1;
+		while (++y < fractal.height)
+		{
+			memcpy(separate + (size_t)channel * (size_t)fractal.size
+				+ (size_t)y * (size_t)fractal.width,
+				fractal.densities[channel][y],
+				(size_t)fractal.width * sizeof(*separate));
+			if (channel == 2)
+			{
+				x = -1;
+				while (++x < fractal.width)
+					footprint_map_sum += fractal.densities[channel][y][x];
+			}
+		}
+	}
+	footprint_different = !close_enough(hit_map_sum, footprint_map_sum);
+	channel = -1;
+	while (++channel < 3)
+	{
+		set_test_channel(&fractal, channel);
+		buddha_map(&fractal);
+		y = -1;
+		while (++y < fractal.height)
+		{
+			x = -1;
+			while (++x < fractal.width)
+				if (!close_enough(separate[(size_t)channel
+						* (size_t)fractal.size + (size_t)y
+						* (size_t)fractal.width + (size_t)x],
+						fractal.densities[channel][y][x]))
+				{
+					fprintf(stderr,
+						"Combined footprint map changed channel %d\n", channel);
+					failed = 1;
+					break ;
+				}
+		}
+	}
+	if (!footprint_different)
+	{
+		fprintf(stderr, "Viewport footprint score did not change the map\n");
 		failed = 1;
 	}
 	free(separate);
@@ -693,6 +814,323 @@ static int	test_map_scale_policy(void)
 		fprintf(stderr, "Fixed map scale did not preserve map_n\n");
 		failed = 1;
 	}
+	return (failed);
+}
+
+static int	test_pilot_jitter(void)
+{
+	t_fractal	fractal;
+	t_buddha	buddha;
+	double		*snapshot;
+	size_t		bytes;
+	int			workers;
+	int			channel;
+	int			y;
+	int			failed;
+	bool		different;
+
+	if (setup_case_workers(&fractal, &buddha, BUDDHA1, 4) != 0)
+		return (fprintf(stderr, "Pilot-jitter setup failed\n"), 1);
+	buddha.map_n = 2.0;
+	buddha.map_adaptive = false;
+	buddha.importance_refinement = false;
+	buddha.importance_rms = false;
+	bytes = (size_t)fractal.size * CHANNELS * sizeof(*snapshot);
+	snapshot = malloc(bytes);
+	if (!snapshot)
+		return (teardown_case(&fractal), 1);
+	buddha.importance_pilot_jitter = false;
+	buddha_map_all(&fractal);
+	channel = -1;
+	while (++channel < CHANNELS)
+	{
+		y = -1;
+		while (++y < fractal.height)
+			memcpy(snapshot + (size_t)channel * (size_t)fractal.size
+				+ (size_t)y * (size_t)fractal.width,
+				fractal.densities[channel][y],
+				(size_t)fractal.width * sizeof(*snapshot));
+	}
+	buddha.importance_pilot_jitter = true;
+	buddha_map_all(&fractal);
+	different = false;
+	channel = -1;
+	while (++channel < CHANNELS)
+	{
+		y = -1;
+		while (++y < fractal.height)
+		{
+			if (memcmp(snapshot + (size_t)channel * (size_t)fractal.size
+					+ (size_t)y * (size_t)fractal.width,
+					fractal.densities[channel][y],
+					(size_t)fractal.width * sizeof(*snapshot)) != 0)
+				different = true;
+			memcpy(snapshot + (size_t)channel * (size_t)fractal.size
+				+ (size_t)y * (size_t)fractal.width,
+				fractal.densities[channel][y],
+				(size_t)fractal.width * sizeof(*snapshot));
+		}
+	}
+	failed = !different;
+	channel = -1;
+	while (++channel < CHANNELS)
+		failed |= buddha.pilot_stats.samples[channel]
+			!= (uint64_t)fractal.size * 4;
+	workers = fractal.worker_histogram_count;
+	fractal.worker_histogram_count = 1;
+	buddha_map_all(&fractal);
+	channel = -1;
+	while (++channel < CHANNELS)
+	{
+		y = -1;
+		while (++y < fractal.height)
+			failed |= memcmp(snapshot + (size_t)channel
+					* (size_t)fractal.size
+					+ (size_t)y * (size_t)fractal.width,
+					fractal.densities[channel][y],
+					(size_t)fractal.width * sizeof(*snapshot)) != 0;
+	}
+	fractal.worker_histogram_count = workers;
+	if (failed)
+		fprintf(stderr, "Pilot jitter changed budget, failed to move samples, "
+			"or depended on worker partition\n");
+	free(snapshot);
+	teardown_case(&fractal);
+	return (failed);
+}
+
+static int	test_adaptive_importance_refinement(void)
+{
+	t_fractal	fractal;
+	t_buddha	buddha;
+	double		*snapshot;
+	uint64_t	refined_cells;
+	size_t		index;
+	int			channel;
+	int			x;
+	int			y;
+	int			failed;
+
+	if (setup_case_workers(&fractal, &buddha, BUDDHA1, 4) != 0)
+		return (fprintf(stderr, "Adaptive-refinement setup failed\n"), 1);
+	buddha.map_n = 2.0;
+	buddha.map_adaptive = false;
+	buddha.importance_refinement = true;
+	buddha.proposal_mixture = true;
+	fractal.move_x = -0.0425;
+	fractal.move_y = 0.9862;
+	fractal.zoom = 420.0;
+	snapshot = malloc((size_t)fractal.size * CHANNELS * sizeof(*snapshot));
+	if (!snapshot)
+		return (teardown_case(&fractal), 1);
+	channel = -1;
+	while (++channel < CHANNELS)
+		zero_matrix(fractal.densities[channel], fractal.width, fractal.height);
+	buddha_map_all(&fractal);
+	failed = 0;
+	refined_cells = buddha.pilot_stats.refined_cells;
+	if (refined_cells == 0)
+	{
+		fprintf(stderr, "Adaptive refinement selected no cells\n");
+		failed = 1;
+	}
+	channel = -1;
+	while (++channel < CHANNELS)
+	{
+		if (buddha.pilot_stats.adaptive_samples[channel]
+			!= refined_cells * 32
+			|| buddha.pilot_stats.samples[channel]
+			!= (uint64_t)fractal.size * 4
+				+ buddha.pilot_stats.adaptive_samples[channel]
+			|| buddha.pilot_stats.adaptive_useful[channel]
+			> buddha.pilot_stats.adaptive_samples[channel])
+		{
+			fprintf(stderr, "Adaptive refinement statistics failed channel %d\n",
+				channel);
+			failed = 1;
+		}
+		y = -1;
+		while (++y < fractal.height)
+			memcpy(snapshot + (size_t)channel * (size_t)fractal.size
+				+ (size_t)y * (size_t)fractal.width,
+				fractal.densities[channel][y],
+				(size_t)fractal.width * sizeof(*snapshot));
+	}
+	index = 0;
+	while (index < (size_t)fractal.size)
+		if (fractal.sample_counts[index++] != 0)
+		{
+			fprintf(stderr,
+				"Adaptive candidate marks leaked into allocation counts\n");
+			failed = 1;
+		}
+	channel = -1;
+	while (++channel < CHANNELS)
+		zero_matrix(fractal.densities[channel], fractal.width, fractal.height);
+	buddha_map_all(&fractal);
+	channel = -1;
+	while (++channel < CHANNELS)
+	{
+		y = -1;
+		while (++y < fractal.height)
+		{
+			x = -1;
+			while (++x < fractal.width)
+				if (!close_enough(snapshot[(size_t)channel
+						* (size_t)fractal.size + (size_t)y
+						* (size_t)fractal.width + (size_t)x],
+						fractal.densities[channel][y][x]))
+				{
+					fprintf(stderr,
+						"Adaptive refinement is not deterministic\n");
+					failed = 1;
+				}
+		}
+	}
+	set_test_channel(&fractal, 1);
+	zero_matrix(fractal.densities[1], fractal.width, fractal.height);
+	buddha_map(&fractal);
+	if (buddha.pilot_stats.adaptive_samples[1] == 0
+		|| buddha.pilot_stats.adaptive_samples[0] != 0
+		|| buddha.pilot_stats.adaptive_samples[2] != 0)
+	{
+		fprintf(stderr,
+			"Single-channel adaptive refinement crossed channels\n");
+		failed = 1;
+	}
+	fractal.move_x = -0.21;
+	fractal.move_y = 0.0;
+	fractal.zoom = 1.2;
+	buddha.importance_refinement_force = false;
+	channel = -1;
+	while (++channel < CHANNELS)
+		zero_matrix(fractal.densities[channel], fractal.width, fractal.height);
+	buddha_map_all(&fractal);
+	if (buddha.pilot_stats.refined_cells != 0)
+	{
+		fprintf(stderr, "Adaptive refinement did not skip a dense map\n");
+		failed = 1;
+	}
+	buddha.importance_refinement_force = true;
+	channel = -1;
+	while (++channel < CHANNELS)
+		zero_matrix(fractal.densities[channel], fractal.width, fractal.height);
+	buddha_map_all(&fractal);
+	if (buddha.pilot_stats.refined_cells == 0)
+	{
+		fprintf(stderr, "Forced adaptive refinement did not run\n");
+		failed = 1;
+	}
+	free(snapshot);
+	teardown_case(&fractal);
+	return (failed);
+}
+
+static int	check_proposal_render(t_fractal *fractal, double *snapshot,
+		int repeat)
+{
+	double	value;
+	size_t	index;
+	int		buffer;
+	int		x;
+	int		y;
+
+	set_test_channel(fractal, 0);
+	build_importance_map(fractal, fractal->densities[0]);
+	fast_buddha(fractal);
+	buffer = -1;
+	while (++buffer < fractal->buffs)
+	{
+		y = -1;
+		while (++y < fractal->height)
+		{
+			x = -1;
+			while (++x < fractal->width)
+			{
+				index = (size_t)buffer * (size_t)fractal->size
+					+ (size_t)y * (size_t)fractal->width + (size_t)x;
+				value = fractal->densities[buffer * CHANNELS][y][x];
+				if (!isfinite(value) || value < 0.0)
+					return (fprintf(stderr,
+							"Proposal mixture produced an invalid density\n"), 1);
+				if (!repeat)
+					snapshot[index] = value;
+				else if (snapshot[index] != value)
+					return (fprintf(stderr,
+							"Proposal mixture was not deterministic\n"), 1);
+			}
+		}
+	}
+	return (0);
+}
+
+static int	test_proposal_mixture(void)
+{
+	t_fractal		fractal;
+	t_buddha		buddha;
+	t_buddha_leaf	*leaves;
+	double			*snapshot;
+	double			totals[CHANNELS];
+	size_t			leaf_count;
+	int				channel;
+	int				failed;
+	int				repeat;
+
+	if (setup_case_config_size(&fractal, &buddha, BUDDHA1, 4, 2, 256) != 0)
+		return (fprintf(stderr, "Proposal-mixture setup failed\n"), 1);
+	buddha.map_n = 2.0;
+	buddha.map_adaptive = false;
+	buddha.importance_refinement = true;
+	buddha.importance_refinement_force = true;
+	buddha.proposal_mixture = true;
+	fractal.move_x = -0.0425;
+	fractal.move_y = 0.9862;
+	fractal.zoom = 420.0;
+	snapshot = malloc((size_t)fractal.size * (size_t)fractal.buffs
+			* sizeof(*snapshot));
+	leaves = NULL;
+	leaf_count = 0;
+	memset(totals, 0, sizeof(totals));
+	if (!snapshot)
+		return (teardown_case(&fractal), 1);
+	failed = 0;
+	repeat = -1;
+	while (++repeat < 2)
+	{
+		channel = -1;
+		while (++channel < CHANNELS)
+			zero_matrix(fractal.densities[channel],
+				fractal.width, fractal.height);
+		buddha_map_all(&fractal);
+		if (!repeat)
+		{
+			leaf_count = buddha.proposal_leaf_count;
+			leaves = malloc(leaf_count * sizeof(*leaves));
+			if (!leaves || leaf_count == 0)
+			{
+				fprintf(stderr, "Proposal refinement retained no test leaves\n");
+				failed = 1;
+			}
+			else
+				memcpy(leaves, buddha.proposal_leaves,
+					leaf_count * sizeof(*leaves));
+			memcpy(totals, buddha.proposal_leaf_total, sizeof(totals));
+		}
+		else if (!failed && (leaf_count != buddha.proposal_leaf_count
+			|| memcmp(leaves, buddha.proposal_leaves,
+				leaf_count * sizeof(*leaves)) != 0
+			|| memcmp(totals, buddha.proposal_leaf_total,
+				sizeof(totals)) != 0))
+		{
+			fprintf(stderr, "Retained proposal leaves were not deterministic\n");
+			failed = 1;
+		}
+		if (!failed)
+			failed |= check_proposal_render(&fractal, snapshot, repeat);
+	}
+	free(leaves);
+	free(snapshot);
+	teardown_case(&fractal);
 	return (failed);
 }
 
@@ -776,6 +1214,7 @@ static int	check_rectangular_map_symmetry(t_btype type,
 				"Rectangular symmetry setup failed\n"), 1);
 	buddha.map_n = 2.0;
 	buddha.map_adaptive = false;
+	buddha.importance_pilot_jitter = true;
 	set_test_channel(&fractal, 0);
 	zero_matrix(fractal.densities[0], width, height);
 	buddha_map(&fractal);
@@ -1197,6 +1636,216 @@ static int	test_multibuffer_reduction_and_variance(void)
 	return (failed);
 }
 
+static int	test_nlm_candidate_variance_guard(void)
+{
+	t_fractal	fractal;
+	t_buddha	buddha;
+	double		center;
+	int			channel;
+	int			x;
+	int			y;
+	int			failed;
+
+	if (setup_case_config_size(&fractal, &buddha, BUDDHA1, 1, 3, 11) != 0)
+		return (fprintf(stderr, "NLM variance-guard setup failed\n"), 1);
+	buddha.nlm_smooth_var = false;
+	buddha.nlm_patch_radius = 0;
+	buddha.nlm_search_radius = 2;
+	buddha.nlm_kc = 0.75;
+	buddha.nlm_noise_scale = 1.0;
+	buddha.nlm_noise_floor = 0.0;
+	buddha.nlm_relative_variance_cap = 1.0;
+	buddha.nlm_firefly_factor = 0.0;
+	buddha.proposal_mixture = true;
+	buddha.proposal_leaf_count = 1;
+	channel = -1;
+	while (++channel < CHANNELS)
+	{
+		y = -1;
+		while (++y < fractal.height)
+		{
+			x = -1;
+			while (++x < fractal.width)
+				fractal.densities[channel + 3][y][x] = 1000.0;
+		}
+		fractal.densities[channel][5][5] = 10.0;
+		fractal.densities[channel + 3][5][5] = 0.01;
+	}
+	failed = buddha_nlm(&fractal) != 0;
+	center = fractal.densities[0][5][5];
+	if (center < 9.0 || fractal.densities[6][5][5] != 10.0)
+	{
+		fprintf(stderr, "NLM candidate variance erased reference signal: "
+			"%.17g\n", center);
+		failed = 1;
+	}
+	buddha.proposal_leaf_count = 0;
+	teardown_case(&fractal);
+	return (failed);
+}
+
+static int	test_proposal_mixture_nlm(void)
+{
+	t_fractal	fractal;
+	t_buddha	buddha;
+	double		raw_white;
+	double		filtered_white;
+	size_t		nonfinite;
+	int			channel;
+	int			x;
+	int			y;
+	int			failed;
+
+	if (setup_case_config_size(&fractal, &buddha, BUDDHA1, 4, 3, 256) != 0)
+		return (fprintf(stderr, "Proposal NLM setup failed\n"), 1);
+	buddha.n = 6.0;
+	buddha.map_n = 2.0;
+	buddha.map_adaptive = false;
+	buddha.importance_refinement = true;
+	buddha.importance_refinement_force = true;
+	buddha.proposal_mixture = true;
+	buddha.nlm_patch_radius = 2;
+	buddha.nlm_search_radius = 15;
+	buddha.nlm_kc = 0.75;
+	buddha.nlm_firefly_factor = 1.0;
+	fractal.move_x = -0.0425;
+	fractal.move_y = 0.9862;
+	fractal.zoom = 420.0;
+	channel = -1;
+	while (++channel < CHANNELS)
+		zero_matrix(fractal.densities[channel],
+			fractal.width, fractal.height);
+	buddha_map_all(&fractal);
+	if (buddha.proposal_leaf_count == 0)
+	{
+		fprintf(stderr, "Proposal NLM retained no guided leaves\n");
+		teardown_case(&fractal);
+		return (1);
+	}
+	channel = -1;
+	while (++channel < CHANNELS)
+	{
+		set_test_channel(&fractal, channel);
+		build_importance_map(&fractal, fractal.densities[channel]);
+		zero_matrix(fractal.densities[channel],
+			fractal.width, fractal.height);
+		fast_buddha(&fractal);
+		combine_buff_set_var(fractal.densities, channel, fractal.buffs,
+			fractal.width, fractal.height);
+	}
+	raw_white = buddha_density_percentile(fractal.densities[0],
+			fractal.width, fractal.height, buddha.white_percentile);
+	failed = buddha_nlm(&fractal) != 0;
+	nonfinite = 0;
+	channel = -1;
+	while (++channel < CHANNELS)
+	{
+		y = -1;
+		while (++y < fractal.height)
+		{
+			x = -1;
+			while (++x < fractal.width)
+			{
+				if (!isfinite(fractal.densities[channel][y][x]))
+				{
+					if (nonfinite == 0)
+						fprintf(stderr, "Proposal NLM non-finite density: "
+							"channel=%d x=%d y=%d value=%g\n",
+							channel, x, y,
+							fractal.densities[channel][y][x]);
+					nonfinite++;
+				}
+			}
+		}
+	}
+	if (nonfinite != 0)
+	{
+		fprintf(stderr, "Proposal NLM produced %zu non-finite densities\n",
+			nonfinite);
+		failed = 1;
+	}
+	filtered_white = buddha_density_percentile(fractal.densities[0],
+			fractal.width, fractal.height, buddha.white_percentile);
+	if (!isfinite(filtered_white) || raw_white <= 0.0
+		|| filtered_white <= 0.0 || filtered_white > raw_white * 4.0)
+	{
+		fprintf(stderr, "Proposal NLM white point collapsed: %.9g -> %.9g\n",
+			raw_white, filtered_white);
+		failed = 1;
+	}
+	teardown_case(&fractal);
+	return (failed);
+}
+
+static int	test_nlm_firefly_suppression(void)
+{
+	t_fractal	fractal;
+	t_buddha	buddha;
+	int			channel;
+	int			x;
+	int			y;
+	int			failed;
+
+	if (setup_case_config_size(&fractal, &buddha, BUDDHA1, 1, 3, 128) != 0)
+		return (fprintf(stderr, "NLM firefly setup failed\n"), 1);
+	buddha.nlm_smooth_var = false;
+	buddha.nlm_patch_radius = 0;
+	buddha.nlm_search_radius = 0;
+	buddha.nlm_noise_floor = 0.0;
+	buddha.proposal_mixture = true;
+	buddha.proposal_leaf_count = 1;
+	channel = -1;
+	while (++channel < CHANNELS)
+	{
+		y = -1;
+		while (++y < fractal.height)
+		{
+			x = -1;
+			while (++x < fractal.width)
+				fractal.densities[channel][y][x] = 1.0;
+		}
+		fractal.densities[channel][20][20] = 1000.0;
+		fractal.densities[channel][40][40] = 3.0;
+		y = 77;
+		while (++y <= 82)
+		{
+			x = 77;
+			while (++x <= 82)
+				fractal.densities[channel][y][x] = 100.0;
+		}
+	}
+	fractal.densities[1][20][20] = 200.0;
+	fractal.densities[2][20][20] = 100.0;
+	fractal.densities[0][60][60] = 10.0;
+	fractal.densities[1][60][61] = 20.0;
+	failed = buddha_nlm(&fractal) != 0;
+	if (fabs(fractal.densities[0][20][20] - 2.0) > 1e-12
+		|| fabs(fractal.densities[1][20][20] - 2.0) > 1e-12
+		|| fabs(fractal.densities[2][20][20] - 2.0) > 1e-12
+		|| fabs(fractal.densities[0][40][40] - 2.0) > 1e-12
+		|| fabs(fractal.densities[0][60][60] - 2.0) > 1e-12
+		|| fabs(fractal.densities[1][60][61] - 2.0) > 1e-12
+		|| fractal.densities[0][80][80] != 100.0
+		|| fractal.densities[6][20][20] != 1000.0)
+	{
+		fprintf(stderr, "NLM firefly suppression changed unsupported pixels "
+			"incorrectly\n");
+		failed = 1;
+	}
+	buddha.nlm_firefly_factor = 1.0;
+	failed |= buddha_nlm(&fractal) != 0;
+	if (fabs(fractal.densities[0][40][40] - 1.0) > 1e-12
+		|| fractal.densities[6][40][40] != 3.0)
+	{
+		fprintf(stderr, "NLM firefly factor did not affect a moderate "
+			"isolated highlight\n");
+		failed = 1;
+	}
+	buddha.proposal_leaf_count = 0;
+	teardown_case(&fractal);
+	return (failed);
+}
+
 static int	render_multibuffer_case(t_fractal *fractal)
 {
 	int	channel;
@@ -1514,7 +2163,7 @@ static int	verify_export_metadata(const char *path, int fractal_id,
 	failed = color_type != PNG_COLOR_TYPE_RGB || bit_depth != 16;
 	failed |= png_get_sRGB(png, info, &intent) == 0;
 	value = find_png_text(text, count, "Metadata Version");
-	failed |= !value || strcmp(value, "fractol-render-v3") != 0;
+	failed |= !value || strcmp(value, "fractol-render-v5") != 0;
 	value = find_png_text(text, count, "Fractal");
 	failed |= !value || !strstr(value,
 			(char *[5]){"", "Mandelbrot", "Julia",
@@ -1543,6 +2192,21 @@ static int	verify_export_metadata(const char *path, int fractal_id,
 		failed |= !value || !strstr(value, "orbit_cache=1")
 			|| !strstr(value, "orbit_cache_points=512")
 			|| !strstr(value, "interior_rejection=1");
+		value = find_png_text(text, count, "Buddha NLM");
+		failed |= !value || !strstr(value,
+				"distance_variance=mixture-reference-plus-min;legacy=sum");
+		value = find_png_text(text, count, "Buddha NLM Noise");
+		failed |= !value || !strstr(value,
+				"mixture_relative_variance_cap=0x1.47ae147ae147bp-6")
+			|| !strstr(value, "mixture_firefly_factor=0x1p+1")
+			|| !strstr(value, "firefly_white_threshold=0")
+			|| !strstr(value, "firefly_support=per-channel-5x5-median");
+		value = find_png_text(text, count, "Buddha Importance");
+		failed |= !value || !strstr(value, "score=viewport-tile-l2")
+			|| !strstr(value, "aggregate=rms")
+			|| !strstr(value, "pilot=stratified-hash-jitter-v1")
+			|| !strstr(value, "pilot_seed=D1B54A32D192ED03")
+			|| !strstr(value, "refinement=beam-quadtree-v1");
 		value = find_png_text(text, count, "Buddha Importance View");
 		failed |= !value || !strstr(value, "mode=RGB")
 			|| !strstr(value,
@@ -1591,7 +2255,15 @@ static void	setup_export_fractal(t_fractal *fractal, t_buddha *buddha,
 	buddha->type = BUDDHA1;
 	buddha->n = 8.0;
 	buddha->map_n = 7.0;
+	buddha->importance_pilot_jitter = true;
 	buddha->importance_rms = true;
+	buddha->importance_recurrence = true;
+	buddha->importance_refinement = true;
+	buddha->proposal_mixture = true;
+	buddha->proposal_global = 0.15;
+	buddha->proposal_window = 0.55;
+	buddha->nlm_relative_variance_cap = 0.02;
+	buddha->nlm_firefly_factor = 2.0;
 	buddha->square_specialized = true;
 	buddha->orbit_cache = true;
 	buddha->interior_rejection = true;
@@ -2094,6 +2766,85 @@ static int	benchmark_buddha(void)
 	return (specialized_checksum != generic_checksum);
 }
 
+static int	benchmark_importance_zoom_case(char *label, double center_real,
+		double center_imaginary, double zoom, bool recurrence, bool refinement,
+		bool jitter)
+{
+	t_fractal	fractal;
+	t_buddha	buddha;
+	long		start;
+	int			channel;
+
+	if (setup_case_config_size(&fractal, &buddha, BUDDHA1, 4, 3, 640) != 0)
+		return (fprintf(stderr, "Importance zoom benchmark setup failed\n"), 1);
+	buddha.n = 8.0;
+	buddha.map_n = 3.0;
+	buddha.map_adaptive = false;
+	buddha.importance_pilot_jitter = jitter;
+	buddha.importance_recurrence = recurrence;
+	buddha.importance_refinement = refinement;
+	buddha.importance_refinement_force = refinement;
+	fractal.move_x = center_real;
+	fractal.move_y = -center_imaginary;
+	fractal.zoom = zoom;
+	channel = -1;
+	while (++channel < CHANNELS)
+		zero_matrix(fractal.densities[channel],
+			fractal.width, fractal.height);
+	printf("\nImportance zoom case %s: center=(%.17g, %.17g) zoom=%.17g "
+		"pilot=%s score=%s refinement=%s\n", label, center_real,
+		center_imaginary,
+		zoom, (char *[2]){"centered", "stratified-jitter-v1"}[jitter],
+		(char *[2]){"visible-hits", "viewport-tile-l2"}[recurrence],
+		(char *[2]){"off", "beam-quadtree"}[refinement]);
+	start = get_time();
+	buddha_map_all(&fractal);
+	printf("Importance pilot time: %ld ms\n", get_time() - start);
+	channel = -1;
+	while (++channel < CHANNELS)
+	{
+		set_test_channel(&fractal, channel);
+		build_importance_map(&fractal, fractal.densities[channel]);
+		buddha_profile_importance(&fractal,
+			fractal.densities[channel], channel);
+	}
+	teardown_case(&fractal);
+	return (0);
+}
+
+static int	benchmark_buddha_importance_zoom(void)
+{
+	int	failed;
+
+	if (setenv("FRACTOL_BUDDHA_PROFILE", "1", 1) != 0)
+		return (fprintf(stderr, "Could not enable importance profiling\n"), 1);
+	failed = benchmark_importance_zoom_case(
+			"default", -0.21, 0.0, 1.2, false, false, false);
+	failed |= benchmark_importance_zoom_case(
+			"default", -0.21, 0.0, 1.2, false, false, true);
+	failed |= benchmark_importance_zoom_case(
+			"default", -0.21, 0.0, 1.2, false, true, true);
+	failed |= benchmark_importance_zoom_case(
+			"default", -0.21, 0.0, 1.2, true, true, true);
+	failed |= benchmark_importance_zoom_case(
+			"loop-420", -0.0425, -0.9862, 420.0, false, false, false);
+	failed |= benchmark_importance_zoom_case(
+			"loop-420", -0.0425, -0.9862, 420.0, false, false, true);
+	failed |= benchmark_importance_zoom_case(
+			"loop-420", -0.0425, -0.9862, 420.0, false, true, true);
+	failed |= benchmark_importance_zoom_case(
+			"loop-420", -0.0425, -0.9862, 420.0, true, true, true);
+	failed |= benchmark_importance_zoom_case(
+			"loop-1000", -0.0425, -0.9862, 1000.0, false, false, false);
+	failed |= benchmark_importance_zoom_case(
+			"loop-1000", -0.0425, -0.9862, 1000.0, false, false, true);
+	failed |= benchmark_importance_zoom_case(
+			"loop-1000", -0.0425, -0.9862, 1000.0, false, true, true);
+	failed |= benchmark_importance_zoom_case(
+			"loop-1000", -0.0425, -0.9862, 1000.0, true, true, true);
+	return (failed);
+}
+
 static void	fill_nlm_benchmark(t_fractal *fractal)
 {
 	uint64_t	hash;
@@ -2197,6 +2948,8 @@ int	main(int argc, char **argv)
 		return (benchmark_buddha());
 	if (argc == 2 && strcmp(argv[1], "--benchmark-nlm") == 0)
 		return (benchmark_buddha_nlm());
+	if (argc == 2 && strcmp(argv[1], "--benchmark-importance-zoom") == 0)
+		return (benchmark_buddha_importance_zoom());
 	failed = 0;
 	i = -1;
 	while (++i < (int)(sizeof(g_reference) / sizeof(g_reference[0])))
@@ -2207,12 +2960,19 @@ int	main(int argc, char **argv)
 	failed |= test_sample_budget_guard();
 	failed |= test_buddha_start_options();
 	failed |= test_importance_allocation();
+	failed |= test_viewport_footprint_score();
 	failed |= test_combined_map_equivalence();
 	failed |= test_map_scale_policy();
+	failed |= test_pilot_jitter();
+	failed |= test_adaptive_importance_refinement();
+	failed |= test_proposal_mixture();
 	failed |= test_rectangular_geometry_and_display();
 	failed |= test_square_specialization();
 	failed |= test_parallel_determinism();
 	failed |= test_multibuffer_reduction_and_variance();
+	failed |= test_nlm_candidate_variance_guard();
+	failed |= test_proposal_mixture_nlm();
+	failed |= test_nlm_firefly_suppression();
 	failed |= test_multibuffer_determinism(BUDDHA1);
 	failed |= test_multibuffer_determinism(BUDDHA2);
 	failed |= test_two_buffer_nlm_retuning();

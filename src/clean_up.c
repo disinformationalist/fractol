@@ -12,6 +12,8 @@ void	free_matrices(t_fractal *fractal)
 	if (histograms <= 0)
 		histograms = fractal->histograms;
 	buddha_free_worker_histograms(fractal);
+	if (fractal->buddha)
+		buddha_clear_importance_proposal(fractal->buddha);
 	free(fractal->sample_counts);
 	if (fractal->densities)
 		free_3d_array_i(fractal->densities, histograms, height);
@@ -32,6 +34,7 @@ void	clear_all(t_fractal *fractal)
 			free_matrices(fractal);
 		free(fractal->buddha->importance_values);
 		free(fractal->buddha->render_pixels);
+		buddha_clear_importance_proposal(fractal->buddha);
 		free(fractal->buddha);
 	}
 	if (fractal->w_colors)
@@ -78,6 +81,7 @@ int	close_handler(t_fractal *fractal)
 		free_matrices(fractal);
 		free(fractal->buddha->importance_values);
 		free(fractal->buddha->render_pixels);
+		buddha_clear_importance_proposal(fractal->buddha);
 		free(fractal->buddha);
 	}
 	if (fractal->fdensity)

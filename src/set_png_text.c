@@ -1,7 +1,7 @@
 #include "fractol.h"
 
 #define FRACTOL_METADATA_CAPACITY 32
-#define FRACTOL_METADATA_VERSION "fractol-render-v3"
+#define FRACTOL_METADATA_VERSION "fractol-render-v5"
 
 static char	*format_text(const char *format, ...)
 {
@@ -257,10 +257,24 @@ static int	add_buddha_text(png_text *text, int *count, t_fractal *f)
 			"n=%a;buffers=%d;fast=%d;allocation=flat-u32",
 			b->n, f->buffs, b->fast);
 	failed |= add_text(text, count, "Buddha Importance",
-			"map_n=%a;effective_scale=%d;adaptive=%d;metric=%s",
-			b->map_n, buddha_map_scale(f), b->map_adaptive,
-			(char *[2]){"mean-visible-hits", "rms-visible-hits"}
-			[b->importance_rms]);
+			"map_n=%a;effective_scale=%d;adaptive=%d;pilot=%s;"
+			"pilot_seed=%llX;refinement=%s;"
+			"score=%s;aggregate=%s;proposal=%s;global=%a;window=%a;"
+			"guided=%a", b->map_n, buddha_map_scale(f),
+			b->map_adaptive,
+			(char *[2]){"centered-grid", "stratified-hash-jitter-v1"}
+			[b->importance_pilot_jitter],
+			(unsigned long long)BUDDHA_PILOT_JITTER_SEED,
+			(char *[3]){"off", "beam-quadtree-v1-auto",
+				"beam-quadtree-v1-force"}
+			[b->importance_refinement + b->importance_refinement_force],
+			(char *[2]){"visible-hits", "viewport-tile-l2"}
+			[b->importance_recurrence],
+			(char *[2]){"mean", "rms"}
+			[b->importance_rms],
+			(char *[2]){"legacy-cell", "defensive-mixture-v1"}
+			[b->proposal_mixture], b->proposal_global, b->proposal_window,
+			1.0 - b->proposal_global - b->proposal_window);
 	failed |= add_text(text, count, "Buddha Channel Iterations",
 			"blue=%d:%d;green=%d:%d;red=%d:%d",
 			b->min1, b->max1, b->min2, b->max2, b->min3, b->max3);
@@ -285,14 +299,20 @@ static int	add_buddha_text(png_text *text, int *count, t_fractal *f)
 			b->hybrid_spill, b->hybrid_background, b->hybrid_foreground);
 	failed |= add_text(text, count, "Buddha NLM",
 			"enabled=%d;smooth_variance=%d;patch=%d;search=%d;kc=%a;"
-			"filtered_ready=%d;display=%s;variance_scratch=two-row-double",
+			"filtered_ready=%d;display=%s;variance_scratch=two-row-double;"
+			"distance_variance=mixture-reference-plus-min;legacy=sum",
 			b->nlm_enabled, b->nlm_smooth_var, b->nlm_patch_radius,
 			b->nlm_search_radius, b->nlm_kc, b->nlm_filtered_ready,
 			(char *[2]){"unfiltered-mean", "filtered"}
 			[b->nlm_show_filtered]);
 	failed |= add_text(text, count, "Buddha NLM Noise",
-			"scale=%a;floor=%a;blue_weight=%a;green_weight=%a;"
-			"red_weight=%a", b->nlm_noise_scale, b->nlm_noise_floor,
+			"scale=%a;floor=%a;mixture_relative_variance_cap=%a;"
+			"mixture_firefly_factor=%a;firefly_white_threshold=0;"
+			"firefly_support=per-channel-5x5-median;"
+			"blue_weight=%a;green_weight=%a;red_weight=%a",
+			b->nlm_noise_scale, b->nlm_noise_floor,
+			b->nlm_relative_variance_cap,
+			b->nlm_firefly_factor,
 			b->nlm_b_weight, b->nlm_g_weight, b->nlm_r_weight);
 	failed |= add_text(text, count, "Buddha Filter",
 			"enabled=%d;type=%d;level=%d",

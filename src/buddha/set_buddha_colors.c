@@ -94,7 +94,8 @@ static double	map_tone_value(double density, t_tone_channel tone)
 	double	mapped;
 	double	ratio;
 
-	if (density <= 0.0 || tone.reference <= 0.0 || tone.magnitude <= 0.0)
+	if (!isfinite(density) || density <= 0.0 || tone.reference <= 0.0
+		|| tone.magnitude <= 0.0)
 		return (0.0);
 	if (tone.inverse)
 	{
@@ -107,6 +108,8 @@ static double	map_tone_value(double density, t_tone_channel tone)
 		mapped = pow(density, tone.magnitude) * tone.scale;
 	if (tone.smoother)
 		mapped = buddha_smootherstep_value(tone.edge0, tone.edge1, mapped);
+	if (!isfinite(mapped))
+		return (0.0);
 	if (mapped < 0.0)
 		return (0.0);
 	if (mapped > 1.0)

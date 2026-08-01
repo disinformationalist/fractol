@@ -30,6 +30,8 @@ static void	free_metadata(png_text *text)
 
 static uint16_t	to_u16(double value)
 {
+	if (!isfinite(value))
+		return (0);
 	if (value < 0.0)
 		value = 0.0;
 	if (value > 1.0)

@@ -44,6 +44,9 @@
 # define BUDDHA_CHANNELS 3
 # define BUDDHA_NLM_MATRICES 9
 # define BUDDHA_ORBIT_CACHE_POINTS 512
+# define BUDDHA_PILOT_JITTER_SEED 0xD1B54A32D192ED03ULL
+# define BUDDHA_SCORE_TILE_AXIS 64
+# define BUDDHA_SCORE_TILE_COUNT 4096
 # define BUDDHA_HYBRID_BACKGROUND 0x00B3D38E
 # define BUDDHA_HYBRID_FOREGROUND 0x0029314F
 # define BUDDHA_HYBRID_SPILL 0.2
@@ -140,6 +143,36 @@ typedef struct s_buddha_channel
 	int	max_iter;
 }	t_buddha_channel;
 
+typedef struct s_buddha_pilot_stats
+{
+	uint64_t	samples[BUDDHA_CHANNELS];
+	uint64_t	eligible[BUDDHA_CHANNELS];
+	uint64_t	useful[BUDDHA_CHANNELS];
+	uint64_t	visible_hits[BUDDHA_CHANNELS];
+	long double	score_sum[BUDDHA_CHANNELS];
+	uint64_t	adaptive_samples[BUDDHA_CHANNELS];
+	uint64_t	adaptive_useful[BUDDHA_CHANNELS];
+	uint64_t	adaptive_visible_hits[BUDDHA_CHANNELS];
+	long double	adaptive_score_sum[BUDDHA_CHANNELS];
+	uint64_t	refined_cells;
+}	t_buddha_pilot_stats;
+
+typedef struct s_buddha_score_scratch
+{
+	uint32_t	generation;
+	uint32_t	stamp[BUDDHA_SCORE_TILE_COUNT];
+	uint32_t	visits[BUDDHA_SCORE_TILE_COUNT];
+}	t_buddha_score_scratch;
+
+typedef struct s_buddha_leaf
+{
+	uint32_t	cell;
+	float		u0;
+	float		v0;
+	float		size;
+	double		cumulative[BUDDHA_CHANNELS];
+}	t_buddha_leaf;
+
 typedef struct s_buddha
 {
 	t_btype	type;
@@ -148,7 +181,17 @@ typedef struct s_buddha
 	double	n;
 	double	map_n;
 	bool	map_adaptive;
+	bool	importance_pilot_jitter;
 	bool	importance_rms;
+	bool	importance_recurrence;
+	bool	importance_refinement;
+	bool	importance_refinement_force;
+	bool	proposal_mixture;
+	double	proposal_global;
+	double	proposal_window;
+	t_buddha_leaf	*proposal_leaves;
+	size_t	proposal_leaf_count;
+	double	proposal_leaf_total[BUDDHA_CHANNELS];
 	bool	square_specialized;
 	bool	orbit_cache;
 	bool	interior_rejection;
@@ -203,6 +246,8 @@ typedef struct s_buddha
 	double	nlm_kc;
 	double	nlm_noise_scale;
 	double	nlm_noise_floor;
+	double	nlm_relative_variance_cap;
+	double	nlm_firefly_factor;
 	double	nlm_r_weight;
 	double	nlm_g_weight;
 	double	nlm_b_weight;
@@ -217,6 +262,7 @@ typedef struct s_buddha
 	double	view_center_real;
 	double	view_center_imaginary;
 	double	view_zoom;
+	t_buddha_pilot_stats	pilot_stats;
 
 	bool			importance_enabled;
 	bool			importance_ready;
@@ -350,6 +396,12 @@ typedef struct s_piece
 	int			buffer;
 	t_fractal	*fractal;
 	Xoro128		rng;
+	t_buddha_pilot_stats	pilot_stats;
+	size_t		*work_indices;
+	t_buddha_leaf	*leaf_slots;
+	void			*proposal;
+	double		score_norm[BUDDHA_CHANNELS];
+	int			active_channel;
 }	t_piece;
 
 
@@ -365,6 +417,8 @@ void		buddha(t_fractal *fractal);
 void		*buddha_set(void *arg);
 void		buddha_map(t_fractal *fractal);
 void		buddha_map_all(t_fractal *fractal);
+void		buddha_refine_importance(t_fractal *fractal, int active_channel);
+void		buddha_clear_importance_proposal(t_buddha *buddha);
 void		*buddha_set_map(void *arg);
 void		*fern_set(void *arg);
 void		fern(t_fractal *fractal);
@@ -414,6 +468,11 @@ int			buddha_visible_hits(t_complex c, t_comps comps,
 				int orbit_length);
 int			buddha_cached_visible_hits(const t_complex *orbit,
 				t_comps comps, int orbit_length);
+double		buddha_visible_footprint(t_complex c, t_comps comps,
+				int orbit_length, t_buddha_score_scratch *scratch, int *hits);
+double		buddha_cached_visible_footprint(const t_complex *orbit,
+				t_comps comps, int orbit_length,
+				t_buddha_score_scratch *scratch, int *hits);
 
 void		combine_buff_set_var(double ***densities, int hist, int buffs, int width, int height);
 int			buddha_nlm(t_fractal *fractal);
@@ -442,6 +501,8 @@ void		buddha_update_white_points(t_fractal *fractal);
 bool		buddha_profile_enabled(void);
 void		buddha_profile_phase(char *name, long start);
 void		buddha_profile_density(t_fractal *fractal, int histogram);
+void		buddha_profile_importance(t_fractal *fractal, double **importance,
+				int channel);
 void		buddha_set_channel_statistics(t_fractal *fractal, int histogram);
 double		high_hit_count(int width, int height, double **density);
 

@@ -70,12 +70,48 @@ than three. At 1080×1080 with four workers this reduces that pool from about
 from 8.90 MiB to 4.45 MiB at 1080×1080. NLM variance smoothing uses two
 double-precision rows rather than borrowing another full-image matrix.
 
+Importance profiling also reports how often the pilot pass finds an eligible
+escape orbit, how often that orbit actually reaches the displayed viewport,
+the mean visible hits per useful orbit, and the selected score per useful orbit
+and per visible hit. Proposal diagnostics include map and allocation support,
+the sample-budget mass whose parameter cells lie inside the displayed window,
+top-one- and top-ten-percent concentration, effective allocated cells,
+allocation-count range, and the largest inverse allocation weight relative to
+uniform sampling. These measurements are worker-local during the pilot pass
+and reduced in worker order. When adaptive refinement runs, a separate line
+reports refined cells, extra samples, useful-sample rate, visits per useful
+orbit, and score per visit.
+
 Buddha types 1 and 2 use independent sample buffers. Their unbiased sample
 variance feeds a joint-channel non-local means filter. The optimized interior
 path uses rolling patch sums, a worker-local patch ring that evaluates each
 three-channel comparison term once, and an exponential lookup table; exact
 patch matching remains in use around image borders. Select two or three buffers
-at startup, or disable NLM without changing the sample-buffer configuration:
+at startup, or disable NLM without changing the sample-buffer configuration.
+When the retained-leaf mixture is active, the distance uses the reference
+variance plus the smaller of the reference and candidate variances. This
+prevents an unusually uncertain candidate from making itself appear similar to
+a well-defined reference feature. Effective matching variance is also limited
+to 2% of the two compared density magnitudes squared. This keeps three-buffer
+uncertainty from classifying an entire bright-to-dark transition as noise while
+patch matching can still remove isolated samples. Ordinary and legacy proposal
+renders retain their existing summed-variance distance unchanged. Set
+`FRACTOL_BUDDHA_NLM_VARIANCE_CAP` between 0 and 1 to tune that safeguard; zero
+disables it. After mixture NLM, a 3×3 neighborhood pass compares each
+positive-density pixel with same-channel adjacent support in filtered-white
+normalized space. Each channel is evaluated independently, so differences in
+the three channel normalization scales cannot hide an outlier. Support is the
+same-channel 5×5 neighborhood median, so the small plateau produced around a
+firefly by NLM cannot protect it, while continuous structures retain broad local
+support.
+Pixels exceeding that support by the configured factor are reduced to the
+factor boundary. Only unsupported channels are changed, reconstructing the
+surrounding color instead of turning a valid background into a dark hole. The
+retained unfiltered mean is unchanged. The rolling scratch holds fifteen image
+rows rather than a full-image copy.
+`FRACTOL_BUDDHA_NLM_FIREFLY` defaults to 2; larger values are more tolerant,
+values down to 1 are progressively more aggressive, and zero disables the
+pass. Values between zero and one are clamped to the meaningful minimum of 1:
 
 ```sh
 FRACTOL_BUDDHA_BUFFERS=2 ./fractol buddha 512 512 0
@@ -98,6 +134,10 @@ radius. The filter can be tuned at startup:
 FRACTOL_BUDDHA_NLM_PATCH=2 FRACTOL_BUDDHA_NLM_KC=1.0 \
   ./fractol buddha 1080 1080 0
 FRACTOL_BUDDHA_NLM_SEARCH=10 ./fractol buddha 1080 1080 0
+FRACTOL_BUDDHA_NLM_VARIANCE_CAP=0.02 ./fractol buddha 512 512 0 \
+  --center -0.0425 -0.9862 --zoom 420
+FRACTOL_BUDDHA_NLM_FIREFLY=2 ./fractol buddha 512 512 0 \
+  --center -0.0425 -0.9862 --zoom 420
 ```
 
 After a filtered render completes, `F4` toggles between the retained unfiltered
@@ -176,33 +216,104 @@ three normalized 16-bit channels (six bytes per output pixel). When the option
 is not enabled, no map or backup image is retained and the display feature adds
 no map-copy or map-coloring work to the render.
 
-Each map cell estimates the number of useful orbit hits visible in the current
-viewport. The exact per-buffer budget is distributed over cells with detected
-pilot-map support. A zero-importance cell is not given a lone, heavily
-weighted fallback sample; that fallback can expose an entire single orbit as a
-bright colored arc when NLM is disabled. An all-zero map still falls back to
-uniform sampling. The weight is computed from the cell's actual integer sample
-count, preserving the inverse allocation/weight relationship. A linear prefix
-scan of those counts splits contiguous, non-overlapping work ranges between
-workers without retaining a full image-sized CDF.
+Each map cell estimates useful orbit contribution inside the current viewport.
+The experimental `viewport-tile-l2` score divides the viewport into at most 64
+tiles along its longer axis, preserves its aspect ratio along the shorter axis,
+and computes the L2 norm of each pilot orbit's tile-visit counts. Repeated visits
+to the same visible structure therefore retain more importance than the same
+number of visits dispersed across unrelated parts of the image. A 16-visit
+orbit contained in one tile scores 16, while 16 visits in distinct tiles score
+4. The scratch counters are worker-local, use generation stamps instead of a
+per-orbit clear, and require 32 KiB per map worker.
 
-The three channel maps are generated in one escape-orbit traversal. The
-combined pass is byte-for-byte equivalent to three separate passes when using
-the same mean-hit metric. By default the allocation metric is RMS visible hits,
-which uses the pilot pass's second moment and gives more weight to rare,
-high-contribution cells. The effective pilot subdivision is resolution-aware:
-configured `map_n=5` becomes 3 at 1080×1080. These settings have explicit A/B
-fallbacks:
+Sparse pilot maps are refined automatically. The refiner selects supported
+high-value cells and their immediate neighbors, and also seeds cells
+overlapping the displayed parameter window when that window is small. Each
+candidate first receives a complete deterministic 4×4 stratification. The two
+strongest subregions are then followed for two quadtree levels, for 32 extra
+pilot samples per candidate. Refined first and second moments are folded back
+into the base-cell estimate, and the two strongest final subcells are retained
+as guided proposal leaves.
+
+An experimental base pilot keeps the exact `effective_scale²` samples per
+parameter cell, but deterministically jitters each sample inside a separate fine
+stratum. Enable it with `FRACTOL_BUDDHA_MAP_JITTER=on`.
+This breaks the globally aligned center lattice without creating clusters or
+changing pilot cost. Positions are a pure hash of the global stratum coordinate,
+scale, axis, and fixed seed, so they are independent of worker partitioning and
+repeat exactly. Conjugate strata use exact antithetic pairs to retain real-axis
+symmetry. A one-sample cell stays centered because it has no separate strata to
+jitter safely. The centered grid remains the default because initial zoom-420
+and zoom-1000 profiling did not show a consistent discovery improvement.
+
+Automatic refinement runs only when combined map support is at most 5% of the
+parameter grid. This avoids expensive refinement at ordinary views where the
+base pilot already has dense support. Candidate marks temporarily reuse the
+existing allocation-count array, and the only temporary allocation is the
+exact-sized candidate index list. Use `FRACTOL_BUDDHA_MAP_REFINEMENT=off` to
+disable refinement or `FRACTOL_BUDDHA_MAP_REFINEMENT=force` to override the
+sparse-map policy for profiling.
+
+The exact per-buffer budget is distributed over cells with detected pilot-map
+support. A zero-importance cell is not given a lone, heavily weighted fallback
+sample; that fallback can expose an entire single orbit as a bright colored arc
+when NLM is disabled. An all-zero map still falls back to uniform sampling. The
+weight is computed from the cell's actual integer sample count, preserving the
+inverse allocation/weight relationship. A linear prefix scan of those counts
+splits contiguous, non-overlapping work ranges between workers without
+retaining a full image-sized CDF.
+
+When sparse-map refinement retains useful leaves, final rendering switches to
+a defensive three-component proposal: 15% uniform samples over the complete
+parameter domain, 55% uniform samples in the displayed parameter window, and
+30% samples from the retained leaves. The global term guarantees support over
+the original domain. Every orbit uses the inverse density of the complete
+mixture—not merely the component that generated it—so the expected global
+Buddhabrot remains unchanged. The proposal and its component probabilities are
+frozen across all NLM buffers; only their independent random streams differ.
+Each buffer uses exact component counts, and its global component is stratified
+over the complete parameter grid with a buffer-specific rotation to reduce
+coverage holes and isolated high-weight global samples.
+Dense ordinary views that skip refinement retain the existing cell allocator
+and pay no mixture cost.
+
+Use `FRACTOL_BUDDHA_PROPOSAL=legacy` for the previous cell sampler. The global
+and window fractions can be changed with
+`FRACTOL_BUDDHA_PROPOSAL_GLOBAL` and
+`FRACTOL_BUDDHA_PROPOSAL_WINDOW`; their sum must remain below one, and the
+remainder is assigned to retained leaves. The default deep-zoom comparison is:
 
 ```sh
+./fractol buddha 512 512 0 --center -0.0425 -0.9862 --zoom 420
+FRACTOL_BUDDHA_PROPOSAL=legacy ./fractol buddha 512 512 0 \
+  --center -0.0425 -0.9862 --zoom 420
+```
+
+The three channel maps are generated in one escape-orbit traversal. The
+combined pass agrees with separate channel passes to floating-point precision.
+By default RMS aggregation uses the pilot pass's second moment and gives more
+weight to rare, high-contribution cells. The effective pilot subdivision is
+resolution-aware: configured `map_n=5` becomes 3 at 1080×1080. These settings
+have explicit A/B fallbacks:
+
+```sh
+FRACTOL_BUDDHA_IMPORTANCE_SCORE=footprint \
 FRACTOL_BUDDHA_IMPORTANCE_METRIC=mean \
+FRACTOL_BUDDHA_MAP_JITTER=off \
+FRACTOL_BUDDHA_MAP_REFINEMENT=off \
 FRACTOL_BUDDHA_MAP_ADAPTIVE=0 \
 FRACTOL_BUDDHA_GENERIC_ORBIT=1 \
 FRACTOL_BUDDHA_PROFILE=1 ./fractol buddha 1080 1080 0
 ```
 
-Remove one fallback at a time to compare the RMS metric, adaptive pilot, and
-specialized quadratic orbit loop using identical deterministic seeds.
+`FRACTOL_BUDDHA_IMPORTANCE_SCORE` accepts `hits` (the unchanged default) or
+`footprint` (the recurrence-aware experiment). The footprint score remains
+opt-in until it has matched-render comparisons using the retained-subcell
+proposal mixture.
+`FRACTOL_BUDDHA_IMPORTANCE_METRIC` selects how per-orbit scores are aggregated
+within each parameter cell: RMS is the default and `mean` is the fallback.
+Change one option at a time to compare scoring, aggregation, pilot scale, and
+the specialized quadratic orbit loop using identical deterministic samples.
 
 The specialized square path also rejects samples analytically inside the main
 cardioid and period-2 bulb. Channels capped at 512 iterations use an 8 KiB
@@ -263,6 +374,7 @@ make test-buddha
 make reference-buddha
 make benchmark-buddha
 make benchmark-buddha-nlm
+make benchmark-buddha-importance-zoom
 ```
 
 `test-buddha` checks the stored histogram sums, peaks, weighted checksums, and
@@ -283,4 +395,9 @@ combined and separate channel-map construction, analytic interior rejection,
 and cached/two-pass orbit accumulation while verifying identical orbit and
 histogram results. `benchmark-buddha-nlm` times the initial and repeated NLM
 passes over the same deterministic density and variance data, and verifies that
-refiltering preserves the result.
+refiltering preserves the result. `benchmark-buddha-importance-zoom` profiles
+the centered and stratified-jitter visible-hit pilots, forced visible-hit
+refinement, and forced viewport-footprint refinement with a 640×640 pilot at
+the default view and at the recurrent-orbit location centered on
+`(-0.0425, -0.9862)` with zooms 420 and 1000. It is a repeatable discovery and
+proposal-concentration comparison and does not render an image.

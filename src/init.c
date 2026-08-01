@@ -12,6 +12,9 @@
 
 #include "fractol.h"
 
+static double	get_env_double(char *name, double default_value,
+		double minimum, double maximum);
+
 void	set_vals(t_fractal *fractal, int min_1, int min_2, int min_3, int max_1, int max_2, int max_3, f complex_f)
 {
 	fractal->buddha->min1 = min_1;
@@ -102,6 +105,52 @@ static bool	get_feature_enabled(char *name, bool default_value)
 	fprintf(stderr, "Invalid %s value '%s'; using %s\n", name, value,
 		(char *[2]){"off", "on"}[default_value]);
 	return (default_value);
+}
+
+static void	get_importance_refinement(t_buddha *b)
+{
+	char	*value;
+
+	b->importance_refinement = true;
+	b->importance_refinement_force = false;
+	value = getenv("FRACTOL_BUDDHA_MAP_REFINEMENT");
+	if (!value || !value[0] || !strcmp(value, "auto"))
+		return ;
+	if (!strcmp(value, "0") || !strcmp(value, "false")
+		|| !strcmp(value, "off"))
+		b->importance_refinement = false;
+	else if (!strcmp(value, "1") || !strcmp(value, "true")
+		|| !strcmp(value, "on") || !strcmp(value, "force"))
+		b->importance_refinement_force = true;
+	else
+		fprintf(stderr, "Invalid FRACTOL_BUDDHA_MAP_REFINEMENT '%s'; "
+			"using auto\n", value);
+}
+
+static void	get_importance_proposal(t_buddha *b)
+{
+	char	*value;
+
+	b->proposal_mixture = true;
+	value = getenv("FRACTOL_BUDDHA_PROPOSAL");
+	if (value && (!strcmp(value, "0") || !strcmp(value, "false")
+			|| !strcmp(value, "off") || !strcmp(value, "legacy")))
+		b->proposal_mixture = false;
+	else if (value && strcmp(value, "1") && strcmp(value, "true")
+		&& strcmp(value, "on") && strcmp(value, "mixture"))
+		fprintf(stderr, "Invalid FRACTOL_BUDDHA_PROPOSAL '%s'; "
+			"using mixture\n", value);
+	b->proposal_global = get_env_double(
+			"FRACTOL_BUDDHA_PROPOSAL_GLOBAL", 0.15, 0.01, 0.90);
+	b->proposal_window = get_env_double(
+			"FRACTOL_BUDDHA_PROPOSAL_WINDOW", 0.55, 0.0, 0.90);
+	if (b->proposal_global + b->proposal_window >= 1.0)
+	{
+		fprintf(stderr, "Buddha proposal global + window must be below 1; "
+			"using 0.15 + 0.55\n");
+		b->proposal_global = 0.15;
+		b->proposal_window = 0.55;
+	}
 }
 
 static double	get_env_double(char *name, double default_value,
@@ -200,6 +249,16 @@ static void	init_buddha_nlm(t_fractal *fractal)
 			"FRACTOL_BUDDHA_NLM_KC", default_kc, 0.05, 8.0);
 	b->nlm_noise_scale = 1.0 / (double)fractal->buffs;
 	b->nlm_noise_floor = 1.0 / (255.0 * 255.0);
+	b->nlm_relative_variance_cap = get_env_double(
+			"FRACTOL_BUDDHA_NLM_VARIANCE_CAP", 0.02, 0.0, 1.0);
+	b->nlm_firefly_factor = get_env_double(
+			"FRACTOL_BUDDHA_NLM_FIREFLY", 2.0, 0.0, 1024.0);
+	if (b->nlm_firefly_factor > 0.0 && b->nlm_firefly_factor < 1.0)
+	{
+		fprintf(stderr, "FRACTOL_BUDDHA_NLM_FIREFLY is a neighborhood "
+			"ratio; clamping %.6g to 1\n", b->nlm_firefly_factor);
+		b->nlm_firefly_factor = 1.0;
+	}
 	b->nlm_r_weight = 1.0;
 	b->nlm_g_weight = 1.0;
 	b->nlm_b_weight = 1.0;
@@ -211,6 +270,7 @@ static void	init_buddha_nlm(t_fractal *fractal)
 static void	init_buddha_importance(t_buddha *b)
 {
 	char	*metric;
+	char	*score;
 
 	b->importance_enabled
 		= get_importance_enabled(b->importance_enabled);
@@ -221,6 +281,8 @@ static void	init_buddha_importance(t_buddha *b)
 	b->render_pixels = NULL;
 	b->map_adaptive = get_feature_enabled(
 			"FRACTOL_BUDDHA_MAP_ADAPTIVE", true);
+	get_importance_refinement(b);
+	get_importance_proposal(b);
 	b->importance_rms = true;
 	metric = getenv("FRACTOL_BUDDHA_IMPORTANCE_METRIC");
 	if (metric && !strcmp(metric, "mean"))
@@ -228,6 +290,13 @@ static void	init_buddha_importance(t_buddha *b)
 	else if (metric && strcmp(metric, "rms"))
 		fprintf(stderr, "Invalid FRACTOL_BUDDHA_IMPORTANCE_METRIC '%s'; "
 			"using rms\n", metric);
+	b->importance_recurrence = false;
+	score = getenv("FRACTOL_BUDDHA_IMPORTANCE_SCORE");
+	if (score && !strcmp(score, "footprint"))
+		b->importance_recurrence = true;
+	else if (score && strcmp(score, "hits"))
+		fprintf(stderr, "Invalid FRACTOL_BUDDHA_IMPORTANCE_SCORE '%s'; "
+			"using hits\n", score);
 }
 
 static void	init_buddha_one(t_fractal *fractal)
@@ -335,7 +404,7 @@ void	init_buddha(t_fractal *fractal)
 	fractal->zoom = 1.2;
 
 	b->fast = true;
-	b->n = 8;
+	b->n = 15;
 	b->map_n = b->n - 1;
 	init_buddha_type(fractal);
 	buddha_apply_start_view(fractal);
